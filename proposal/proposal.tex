@@ -1,0 +1,214 @@
+\documentclass{article}
+
+\usepackage{graphicx}
+\usepackage{minted}
+\usepackage{color}
+\usepackage{fancyhdr}
+\usepackage[margin=1.0in]{geometry}
+\usepackage{multicol}
+\usepackage{titlesec}
+\usepackage{filecontents}
+\usepackage{url}
+
+\definecolor{airforceblue}{rgb}{0.36, 0.54, 0.66}
+\definecolor{secblue}{rgb}{0.18, 0.27, 0.33}
+
+\input{style.tex}
+
+\pagestyle{plain}
+
+\title{Hiss: Static Duck Type Checking for Python\\ (Proposal)}
+\author{Joshua Rahm}
+
+\begin{filecontents}{bib.bib}
+@misc{logic,
+  author = {Ravi Chugh, Patrick M. Rondon, Ranjit Jhal},
+  title = {{Nested Refinements: A Logic for Duck Typing}},
+  howpublished = "\url{http://people.cs.uchicago.edu/~rchugh/static/papers/popl12-nested.pdf}",
+  note = "[Online; accessed 10-November-2015]"
+}
+
+@misc{nst,
+  title = {{Nomitive and Structural Typing}},
+  howpublished = "\url{http://c2.com/cgi/wiki?NominativeAndStructuralTyping}",
+  note = "[Online; accessed 13-November-2015]"
+}
+
+@misc{dynamic,
+  author = {Jonathan Eifrig, Scott Smith, Valery Trifonov},
+  title = {{Type Inference for Recursively Constrained Types and its Application to OOP}},
+  howpublished = "\url{http://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=F4F3BAF0FC6AB2A0681AA4428CFD4C4A?doi=10.1.1.92.6519&rep=rep1&type=pdf}",
+  note = "[Online; accessed 13-November-2015]"
+}
+\end{filecontents}
+
+
+\begin{document}
+\nocite{*}
+\maketitle
+\hrule
+
+% \raggedcolumns
+\begin{multicols}{2}
+% \raggedcolumns
+
+\begin{abstract}
+
+    In recent years, dynamically typed languages, specifically Python, have
+    become extremely popular, especially for the object-oriented, imperative
+    paradigms. Like most technologies, there are benefits and there are cons.
+    Some of the benefits include generally less typing and quicker development
+    time. No matter how quick the new development time, One of the largest
+    drawbacks of dynamic languages is the lack of good static checking,
+    specifically type checking. The fact is that while dynamic languages give
+    the programmer huge flexibility in terms of type-introspection at runtime.
+    Most programmers, however, choose not to use these features and instead
+    treat Python as if it was statically typed and just keep track of the types
+    in their heads while programming. For programs like these, it should be
+    able to infer types of variables and detect inconsistencies and report to
+    the programmer.
+
+\end{abstract}
+
+\section*{Problem}
+
+The problem facing many programmers is a dilemma of choosing between the
+flexibility and the terseness of dynamically typed languages such as Python and
+the safety of statically typed languages. Indeed, dynamic typing the past
+several years has gained some immense popularity among developers for its
+relative ease; however, the lack of good static checking can make it very
+cumbersome to hunt down and eliminate even simple bugs which a compiler
+would most likely catch in a statically typed language.
+
+The real crime is the fact that most programs, regardless of typing discipline,
+are written in a way that is intended to by type-safe.  In addition, most of
+the code written even conforms to type erasure semantics, meaning there is no
+type-introspection being done at runtime. Under these conditions, it should be
+easy for an automated reasoning engine to detect inconsistencies in code intended
+to fit this definition of safety.
+
+Such a tool would cut development time even more than these dynamic languages
+have already. The major hurdle when it comes to creating such a tool is
+the lack of explicit typing in nearly all aspects of a program. This makes is
+more difficult as it prohibits the tracking of strict types, which means
+it must implement forms of type inference for structural and duck typing
+disciplines.
+
+\section*{Proposal}
+
+I propose that as an implementation project, I will implement a subset of the
+static checker described in the previous project for a subset of the Python
+programming language. The exact subset has yet to be defined, but it will
+operate under sanely typed Python programs, meaning programs which are intended
+to be type-safe and adhere to type-erasure semantics.
+
+The more exact terms of the implementation are described in later sections.
+
+The project name is Hiss, after (of course) the sound a snake makes.
+
+\section*{Duck Typing}
+
+Duck typing, specifically the ability to infer types in a Duck-Typed system,
+is at the heart of the implementation of Hiss.
+
+A misconception is that Duck Typing is only associated with dynamically typed
+languages. This is false, although it is true that most modern dynamically typed
+languages implement a form of duck typing, it is not rare to see a statically
+typed language implement some duck typing. A very common example is the following
+example using C++ templates.
+
+\inputminted{cpp}{test1.cpp}
+
+This code snippet will compile, and will behave as expected. C++ is able
+to infer types properly, statically check them, and compile. Even though
+\emph{Person} and \emph{Duck} are not a part of the same inheritance structure,
+they both may still be used in the \emph{InTheForest} function because they
+happen to have the correct functions.
+
+If C++ can compile this, then the python analog should be checkable:
+
+\inputminted{python}{test1.py}
+
+Alas, there are very few, if any, static verifiers out there that can actually
+check this code. In fact, changing the definition of \emph{InTheForest}
+to be:
+
+\begin{minted}{python}
+def InTheForest(duck):
+    duck.quack()
+    duck.walk()
+    duck.feathers()
+\end{minted}
+
+there is absolutely no indication from pylint (a common python lint checker) that
+this will blatantly fail at runtime because a \emph{Person} does not have the
+method \emph{feathers}. Yet a similar change in the C++ code will result in a
+very quick compile error.
+
+\subsection*{Duck Type Inference \& Structural Typing}
+
+As stated previously, at the heart of Hiss is the need to be able to use logic
+to infer the types of a Duck-Typed programming language. This requires a very
+different approach to typing than traditional type systems like those in Java
+or C++. What is required is a model of types which is not based on the name of
+the type, but rather a model of typing based on the attributes of the values.
+This a concept that Structural typing attempts to formalize. In a structural
+type system, for an object $O$ to be compatible with a type $T$, $O$ must implement
+a superset of attributes defined in $T$.\cite{nst}
+
+\subsection*{Constrained Typing with Type Inference}
+
+More languages these days like Haskell are implementing a typing discipline
+knows as constrained types. These types allow the programmer to define function
+and attributes to a \emph{class of data types}. For example, a ``Readable'' type
+may have a function called \emph{read}, likewise a ``Monoid'' type may have a
+function called ``zero'' and a function called ``append''. Readable and Monoid are
+example of constraints on a type. When performing type-inference on them, they
+help to provide the most generic, but complete constraint for a type. So if a
+type $\alpha$ is observed to be used in an ``append'' call, it can be inferred
+that $\alpha$ is \emph{constrained} by the class Monoid.
+
+\subsection*{Inference}
+
+When witnessing an assignment to a variable $v$, we can extrapolate the
+expected \emph{structural type} of $v$. From there, as Hiss linearly traces
+through the program, every method invoked on $v$ and every attribute accessed
+on $v$ can be verified to be a part of $v$'s structural type. If not, a warning
+will be raised to notify the programmer that a potential type error has
+occurred.
+
+In the case that an assignment to $v$ is a base case, meaning the assignment
+is from either a string literal, a number, or a constructor, then the full
+type as well as the structural type is then known by Hiss and further inferences
+may be made.
+
+\subsubsection*{Functions}
+
+Structural types may be given to a function's return type and argument types by
+this inference of the structural types of the arguments as well as the return
+type. This can be used both to infer types of the parameters and the return type
+so that all invocations of the function may also be inferred with the correct
+structural types.
+
+\subsubsection*{Any Type}
+
+To completely express this type system, there must be a notion of the "any type"
+meaning that there are no clues to the actual type of a variable and therefore
+its structural type is a wild card of sorts and cannot be determined. The Any Type
+will come into play when using an opaque library and it is not possible to determine
+
+\section*{Timeline}
+
+As the weeks progress, I will work on the implementation of this project. The
+implementation will be written in Haskell since there is a fairly mature and reliable
+Python parser for the language. After the first week, I plan to have basic scaffolding
+done, then over the break and the following week I plan to implement some of the
+basic functionality. Finally, the last week of the semester will be dedicated into
+formalizing the results and putting together a short writeup about the findings.
+
+\bibliographystyle{abbrv}
+\bibliography{bib}
+
+\vspace{\textheight}
+\end{multicols}
+\end{document}
