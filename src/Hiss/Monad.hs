@@ -1,7 +1,11 @@
 module Hiss.Monad (Hiss, runHiss, hlog, verbose, isVersion2, hasFlag,
                    die, fromEither, hissLiftIO, runHissIO, StructuralType(..),
-                   emptyType, singletonType, unionType) where
+                   emptyType, singletonType, unionType, addFunction,
+                   addClass, Function(..), Class(..), emitWarning, getFunction,
+                   getWarnings
+                   ) where
 
+import Control.Monad.IO.Class
 import Control.Monad.Trans.State.Lazy
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Either
@@ -40,32 +44,71 @@ instance Show StructuralType where
             [] -> "Any"
             l -> "{" ++ intercalate ", " l ++ "}"
 
+type FunctionType = ([StructuralType], StructuralType)
+data Function = Function
+                 String -- name of function
+                 FunctionType -- type of the function
+
+data Class = Class
+              String -- name of class
+              StructuralType -- inferred structural type of class
+              (Map String Function) -- member functions
+
 data HissState e = HissState {
       flags :: Set Flag    -- command line flags
 
       {- Function name to StructuralTypes of arguments to
        - StructuralType of return value -}
-    , functions :: Map String ([StructuralType], StructuralType)
-    , warnings :: [e]
+    , functions :: Map String Function
+    , classes :: Map String Class
+
+    {- Warning collection list. For printing them out
+     - at the end -}
+    , warnings :: [(String, e)]
 }
 
 type Hiss e = EitherT String (StateT (HissState e) IO)
 
+getWarnings :: HissState e -> [(String, e)]
+getWarnings = warnings
+
+getFunction :: String -> Hiss e (Maybe Function)
+getFunction str =
+    (Map.lookup str . functions) <$> lift get
+
+getClass :: String -> Hiss e (Maybe Class)
+getClass str =
+    (Map.lookup str . classes) <$> lift get
+
+addFunction :: Function -> Hiss e ()
+addFunction fn@(Function name _) =
+    lift $ modify (\s -> s {functions = Map.insert name fn (functions s)})
+
+addClass :: Class -> Hiss e ()
+addClass cl@(Class name _ _) =
+    lift $ modify (\s -> s {classes = Map.insert name cl (classes s)})
+
 hissLiftIO :: IO a -> Hiss e a
 hissLiftIO = lift . lift
 
+emptyHissState :: Set Flag -> HissState e
+emptyHissState flags = HissState flags Map.empty Map.empty []
+
 runHiss :: Set Flag -> Hiss e a -> IO (Either String a)
-runHiss flags fn = evalStateT (runEitherT fn) (HissState flags Map.empty [])
+runHiss flags fn = evalStateT (runEitherT fn) (emptyHissState flags)
 
-runHissIO :: Set Flag -> Hiss e a -> IO a
-runHissIO flags fn = do
-    either <- evalStateT (runEitherT fn) (HissState flags Map.empty [])
-    case either of
-        Left s -> hPutStrLn stderr s >> exitWith (ExitFailure 1)
-        Right a -> return a
+runHissIO :: Set Flag -> Hiss e a -> IO (HissState e)
+runHissIO flags fn =
+    flip execStateT (emptyHissState flags) $ do
 
-emitWarning :: e -> Hiss e ()
-emitWarning e = lift (modify $ \hs -> hs {warnings = e:warnings hs})
+            either <- runEitherT fn
+
+            case either of
+                Left s -> liftIO (hPutStrLn stderr s >> exitWith (ExitFailure 1))
+                Right s -> return s
+
+emitWarning :: String -> e -> Hiss e ()
+emitWarning str e = lift (modify $ \hs -> hs {warnings = (str, e):warnings hs})
 
 hlog :: String -> Hiss e ()
 hlog str = lift $ lift $ putStrLn str

@@ -36,13 +36,11 @@ childExpressions exp =
         _ -> []
 
 
-
-    where
-        arg2Expr :: Argument a -> Expr a
-        arg2Expr (ArgExpr e _) = e
-        arg2Expr (ArgVarArgsPos e _) = e
-        arg2Expr (ArgVarArgsKeyword e _) = e
-        arg2Expr (ArgKeyword _ e _) = e
+arg2Expr :: Argument a -> Expr a
+arg2Expr (ArgExpr e _) = e
+arg2Expr (ArgVarArgsPos e _) = e
+arg2Expr (ArgVarArgsKeyword e _) = e
+arg2Expr (ArgKeyword _ e _) = e
 
 walkExpressions :: Statement a -> [Expr a]
 walkExpressions stmt =

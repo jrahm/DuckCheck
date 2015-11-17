@@ -14,8 +14,10 @@ import Hiss.Flags
 import Hiss
 
 flags :: [OptDescr Flag]
-flags = [Option ['2'] [] (NoArg Version2)
-            "The source file is a Python 2 program, not a Python 3 program."]
+flags = [  Option ['2'] [] (NoArg Version2)
+            "The source file is a Python 2 program, not a Python 3 program."
+         , Option ['v'] [] (NoArg Verbose)
+            "Run in verbose logging mode." ]
 
 runFilesWithArgs :: [Flag] -> [String] -> IO ()
 runFilesWithArgs opts =
