@@ -31,6 +31,7 @@ childExpressions exp =
         StringConversion exp _ -> return exp
 
         Dot exp _ _ -> return exp
+        List exps _ -> exps
 
         _ -> []
 
