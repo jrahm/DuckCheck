@@ -20,16 +20,17 @@ import Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-parsePython :: FilePath -> Hiss a (ModuleSpan, [Token])
+parsePython :: FilePath -> Hiss SrcSpan (Maybe (ModuleSpan, [Token]))
 parsePython fp = do
     version2 <- isVersion2
     sourceCode <- hissLiftIO (readFile fp)
-    fromEither $
-        (if version2 then P2.parseModule else P3.parseModule) sourceCode fp
+    case (if version2 then P2.parseModule else P3.parseModule) sourceCode fp of
+        Left (UnexpectedToken token) -> emitWarning "ParseError: Unexpected token" (token_span token) >> return Nothing
+        Left (UnexpectedChar ch NoLocation) -> emitWarning ("ParseError: Unexpected char " ++ [ch]) SpanEmpty >> return Nothing
+        Left (UnexpectedChar ch (Sloc f l c)) -> emitWarning ("ParseError: Unexpected char " ++ [ch]) (SpanPoint f l c) >> return Nothing
+        Left (StrError str) -> emitWarning ("ParseError: %s" ++ str) SpanEmpty >> return Nothing
+        Right a -> return (Just a)
 
-builtins :: Set.Set String
-builtins =
-    Set.fromList ["print", "len", "str", "int", "float"]
 
 {- Collects and infers the type of a variable name over
  - the span of the list of statements given. -}
@@ -50,10 +51,7 @@ inferTypeForVariable varname stmts =
              case mfn of
                 {- This function may not exist, we should warn, but
                  - then continue on with the type inference -}
-                Nothing -> do
-
-                    unless (fnname `Set.member` builtins) $
-                        emitWarning ("Possible unknown function " ++ fnname) pos
+                Nothing ->
 
                     iterateOverChildren ex
 
@@ -100,7 +98,10 @@ mkClass :: Statement a -> Hiss a (StructuralType, Map String Function)
 mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do
     functions <- topFunctions -- the functions in the body
     let initFn = Map.lookup "__init__" functions
-    let structuralType = selfAssignments `unionType` fromSet (Map.keysSet functions)
+    let structuralType =
+         setTypeName clname $
+             selfAssignments `unionType`
+                fromSet (Map.keysSet functions)
 
     forM_ initFn $ \(Function _ (args, _)) -> do
         {- Add the init function to the global scope
@@ -166,14 +167,29 @@ detectInsanity initmap b = do
         detect :: Map String StructuralType -> Statement a -> Hiss a (Map String StructuralType)
         detect db stmt =
             case stmt of
+
+                {- Handle the case where we are assigning to a function we
+                 - know the type of! -}
                 (Assign [Var (Ident vname _) _] (Call (Var (Ident fn _) _) _ _) _) ->
                  do
                     f <- getFunction fn
                     let typ = case f of
                                Just (Function _ (_, returnType)) -> returnType
                                Nothing -> emptyType
+                    verbose $ "Assign to variable named " ++ vname
                     return (Map.insert vname typ db)
 
+                {- General cach all assignment code to shut up
+                 - about undefined variables -}
+                (Assign vars _ _) -> return $
+                    foldl (\m exp ->
+                            case exp of
+                                (Var (Ident vname _) _) -> Map.insert vname emptyType m
+                                _ -> m) db vars
+
+                {- Handle insanity for a specific function. This function called
+                 - will correctly set the arguments to the correct types
+                 - to be used later. -}
                 (Fun {}) -> do
                     detectInsanityForFunction stmt
                     return db
@@ -184,7 +200,20 @@ detectInsanity initmap b = do
                     underContext name $ detectInsanity Map.empty body
                     return db
 
-                stmt ->
+                (Conditional guards elsest _) -> do
+                    verbose "Entering conditional statement!"
+                    forM_ guards $ \(expr, body) -> do
+                        _ <- detectExp db expr
+                        detectInsanity db body
+
+                    detectInsanity db elsest
+                    return db
+
+                (StmtExpr expr _) -> detectExp db expr
+                (Return (Just expr) _) -> detectExp db expr
+
+                stmt -> do
+                    verbose $ "Unhandled: " ++ prettyText stmt
                     foldM detectExp db $ walkAllExpressions [stmt]
 
         detectExp :: Map String StructuralType -> Expr a -> Hiss a (Map String StructuralType)
@@ -220,12 +249,19 @@ detectInsanity initmap b = do
 
                         zipWithM_ (\(t1, pos) t2 ->
                             unless (isCompatibleWith t1 t2) $
-                                emitWarning "Possible type error" pos) inferredArgTypes argTypes
+                                emitTypeWarning t1 t2 fnname pos) inferredArgTypes argTypes
 
                         return db
 
 
             _ -> return db
+
+        emitTypeWarning t1 t2 fn =
+            emitWarning $
+                printf "Probable Attribute Error: The type %s does not have the attribute(s): %s (needed by %s)"
+                    (getTypeName t1)
+                    (intercalate ", " (Set.toList $ typeDifference t2 t1))
+                    fn
 
 
 iterateAST :: Statement a -> Hiss a ()
@@ -245,9 +281,12 @@ iterateAST stmt =
 
 runHissM :: FilePath -> Hiss SrcSpan ()
 runHissM fp = do
-    (Module stmts, _) <- parsePython fp
-    mapM_ iterateAST stmts
-    detectInsanity Map.empty stmts
+    mayStmts <- parsePython fp
+    case mayStmts of
+        Just (Module stmts, _) -> do
+            mapM_ iterateAST stmts
+            detectInsanity Map.empty stmts
+        Nothing -> return ()
 
 getStartPos :: SrcSpan -> Maybe (String, Int, Int)
 getStartPos sp = case sp of

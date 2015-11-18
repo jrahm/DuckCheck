@@ -3,8 +3,11 @@ module Hiss.Monad (Hiss, runHiss, hlog, verbose, isVersion2, hasFlag,
                    emptyType, singletonType, unionType, addFunction,
                    addClass, Function(..), HClass(..), emitWarning, getFunction,
                    getWarnings, getClass, typeHasAttr, fromSet, typeToString,
-                   underContext, getGlobalFunction, isCompatibleWith
+                   underContext, getGlobalFunction, isCompatibleWith, setTypeName,
+                   getTypeName, toList, typeDifference
                    ) where
+
+import Data.Maybe (fromMaybe)
 
 import Control.Applicative
 import Control.Monad.IO.Class
@@ -26,40 +29,59 @@ import System.Exit (exitWith, ExitCode(ExitFailure))
 
 import Data.List
 
-newtype StructuralType = Attributes (Set String)
+data StructuralType = Attributes {
+      type_name :: Maybe String
+    , type_attributes :: Set String
+}
+
+typeDifference :: StructuralType -> StructuralType -> Set String
+typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 Set.\\ s2
 
 typeToString :: FunctionType -> String
 typeToString (args, ret) = intercalate " -> " $ map show (args ++ [ret])
 
+setTypeName :: String -> StructuralType -> StructuralType
+setTypeName str typ = typ {type_name = Just str}
+
+getTypeName :: StructuralType -> String
+getTypeName (Attributes Nothing _) = "?"
+getTypeName (Attributes (Just s) _) = s
+
+
 fromSet :: Set String -> StructuralType
-fromSet = Attributes
+fromSet = Attributes Nothing
 
 fromList :: [String] -> StructuralType
 fromList = fromSet . Set.fromList
 
+toList :: StructuralType -> [String]
+toList (Attributes _ s) = Set.toList s
+
 emptyType :: StructuralType
-emptyType = Attributes Set.empty
+emptyType = Attributes Nothing Set.empty
 
 singletonType :: String -> StructuralType
-singletonType = Attributes . Set.singleton
+singletonType = Attributes Nothing . Set.singleton
 
 addAttribute :: String -> StructuralType -> StructuralType
-addAttribute str (Attributes set) = Attributes $ Set.insert str set
+addAttribute str (Attributes n set) = Attributes n $ Set.insert str set
 
 unionType :: StructuralType -> StructuralType -> StructuralType
-unionType (Attributes s1) (Attributes s2) = Attributes (Set.union s1 s2)
+unionType (Attributes n s1) (Attributes _ s2) = Attributes n (Set.union s1 s2)
 
 typeHasAttr :: StructuralType -> String -> Bool
-typeHasAttr (Attributes set) str = str `Set.member` set
+typeHasAttr (Attributes _ set) str = str `Set.member` set
 
 isCompatibleWith :: StructuralType -> StructuralType -> Bool
-isCompatibleWith (Attributes s1) (Attributes s2) = s2 `Set.isSubsetOf` s1
+isCompatibleWith (Attributes _ s1) (Attributes _ s2) | Set.null s1 = True
+                                                     | otherwise =  s2 `Set.isSubsetOf` s1
 
 instance Show StructuralType where
-    show (Attributes strs) =
+    show (Attributes name strs) =
         case Set.toList strs of
             [] -> "Any"
-            l -> "{" ++ intercalate ", " l ++ "}"
+            l ->
+                fromMaybe "" name ++ "{" ++ intercalate ", " l ++ "}"
 
 type FunctionType = ([StructuralType], StructuralType)
 data Function = Function
