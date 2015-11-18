@@ -2,6 +2,20 @@ module Hiss.AST.Util where
 
 import Language.Python.Common
 import Data.Maybe
+import Control.Monad.Writer.Lazy
+
+walkAllExpressions :: [Statement a] -> [Expr a]
+walkAllExpressions stmts =
+    execWriter $ forM_ exps walk
+    where
+        exps = concatMap walkExpressions stmts
+
+        walk :: Expr a -> Writer [Expr a] ()
+        walk exp = do
+              tell [exp]
+              mapM_ walk $ childExpressions exp
+
+
 
 childExpressions :: Expr a -> [Expr a]
 childExpressions exp =
@@ -41,6 +55,15 @@ arg2Expr (ArgExpr e _) = e
 arg2Expr (ArgVarArgsPos e _) = e
 arg2Expr (ArgVarArgsKeyword e _) = e
 arg2Expr (ArgKeyword _ e _) = e
+
+walkStatements :: Statement a -> [Statement a]
+walkStatements stmt =
+    case stmt of
+        (Fun {fun_body = body}) -> stmt : concatMap walkStatements body
+        (Class {class_body = body}) -> stmt : concatMap walkStatements body
+        (While {while_body = body}) -> stmt : concatMap walkStatements body
+        (For {for_body = body, for_else = el}) -> stmt : concatMap walkStatements body ++ concatMap walkStatements el
+        _ -> return stmt -- todo add more
 
 walkExpressions :: Statement a -> [Expr a]
 walkExpressions stmt =
