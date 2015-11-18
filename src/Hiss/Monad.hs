@@ -3,7 +3,7 @@ module Hiss.Monad (Hiss, runHiss, hlog, verbose, isVersion2, hasFlag,
                    emptyType, singletonType, unionType, addFunction,
                    addClass, Function(..), HClass(..), emitWarning, getFunction,
                    getWarnings, getClass, typeHasAttr, fromSet, typeToString,
-                   underContext
+                   underContext, getGlobalFunction, isCompatibleWith
                    ) where
 
 import Control.Applicative
@@ -33,6 +33,9 @@ typeToString (args, ret) = intercalate " -> " $ map show (args ++ [ret])
 
 fromSet :: Set String -> StructuralType
 fromSet = Attributes
+
+fromList :: [String] -> StructuralType
+fromList = fromSet . Set.fromList
 
 emptyType :: StructuralType
 emptyType = Attributes Set.empty
@@ -86,6 +89,14 @@ data HissState e = HissState {
 
 type Hiss e = EitherT String (StateT (HissState e) IO)
 
+builtinGlobalFunctions :: Map String Function
+builtinGlobalFunctions =
+    Map.fromList $ map (\f@(Function name _) -> (name, f))[
+          Function "print" ([emptyType], emptyType)
+        , Function "len" ([fromList ["__len__"]], emptyType)
+        , Function "str" ([fromList ["__str__"]], emptyType)
+    ]
+
 underContext :: String -> Hiss e a -> Hiss e a
 underContext str fn = do
     st <- lift get
@@ -108,6 +119,11 @@ underContext str fn = do
 
 getWarnings :: HissState e -> [(String, e)]
 getWarnings = warnings
+
+getGlobalFunction :: String -> Hiss e (Maybe Function)
+getGlobalFunction str = do
+    st <- lift get
+    return $ Map.lookup str (global_functions st)
 
 getFunction :: String -> Hiss e (Maybe Function)
 getFunction str = do
@@ -135,7 +151,7 @@ hissLiftIO :: IO a -> Hiss e a
 hissLiftIO = lift . lift
 
 emptyHissState :: Set Flag -> HissState e
-emptyHissState flags = HissState flags Map.empty Map.empty [] Nothing Nothing
+emptyHissState flags = HissState flags builtinGlobalFunctions Map.empty [] Nothing Nothing
 
 runHiss :: Set Flag -> Hiss e a -> IO (Either String a)
 runHiss flags fn = evalStateT (runEitherT fn) (emptyHissState flags)

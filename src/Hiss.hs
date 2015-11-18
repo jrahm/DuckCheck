@@ -1,7 +1,8 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
 module Hiss where
 
-import Control.Monad (foldM, when, unless, void)
+import Control.Monad (foldM, when, unless, void, forM, zipWithM_)
 import Data.Foldable (mapM_, forM_)
 import Data.List
 import Data.Map (Map)
@@ -178,6 +179,8 @@ detectInsanity initmap b = do
                     return db
 
                 (Class {class_body = body, class_name = Ident name _}) -> do
+                    -- TODO this will cause some problems with name clashes
+                    -- between global and local scope.
                     underContext name $ detectInsanity Map.empty body
                     return db
 
@@ -200,9 +203,29 @@ detectInsanity initmap b = do
                             let warning = printf "Probable attribute error: %s has no attribute %s" varname attname in
                             emitWarning warning pos
                         return db
+            (Call (Var (Ident fnname _) _) args pos) -> do
+                fn <- getGlobalFunction fnname
+                case fn of
+                    Nothing -> do
+                        emitWarning ("Possible unknown global function " ++ fnname) pos
+                        return db
+                    Just (Function _ (argTypes, _)) -> do
+                        inferredArgTypes <- forM args $ \arg ->
+                            case arg of
+                                ArgExpr (Var (Ident name _) pos) _ ->
+                                    maybe (do
+                                        emitWarning ("Possible undefined variable " ++ name) pos
+                                        return (emptyType, pos)) (return . (,pos)) $ Map.lookup name db
+                                _ -> return (emptyType, pos)
+
+                        zipWithM_ (\(t1, pos) t2 ->
+                            unless (isCompatibleWith t1 t2) $
+                                emitWarning "Possible type error" pos) inferredArgTypes argTypes
+
+                        return db
+
 
             _ -> return db
-
 
 
 iterateAST :: Statement a -> Hiss a ()
