@@ -20,6 +20,9 @@ import Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import Hiss.Builtins
+import Hiss.Types
+
 parsePython :: FilePath -> Hiss SrcSpan (Maybe (ModuleSpan, [Token]))
 parsePython fp = do
     version2 <- isVersion2
@@ -170,14 +173,21 @@ detectInsanity initmap b = do
 
                 {- Handle the case where we are assigning to a function we
                  - know the type of! -}
-                (Assign [Var (Ident vname _) _] (Call (Var (Ident fn _) _) _ _) _) ->
+                (Assign [Var (Ident vname _) _] (Call (Var (Ident fn _) _) _ _) pos) ->
                  do
                     f <- getFunction fn
-                    let typ = case f of
-                               Just (Function _ (_, returnType)) -> returnType
-                               Nothing -> emptyType
+                    typ <- case f of
+                               Just (Function _ (_, returnType)) -> return returnType
+                               Nothing -> do
+                                emitWarning ("Possible unknown global function " ++ fn) pos
+                                return emptyType
                     verbose $ "Assign to variable named " ++ vname
                     return (Map.insert vname typ db)
+
+                {- Literal string assignment. -}
+                (Assign [Var (Ident vname _) _] (Strings {}) _) -> do
+                    verbose $ prettyText stmt
+                    return $ Map.insert vname (toStructuralType strClass) db
 
                 {- General cach all assignment code to shut up
                  - about undefined variables -}

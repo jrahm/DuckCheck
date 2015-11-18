@@ -28,70 +28,8 @@ import System.IO
 import System.Exit (exitWith, ExitCode(ExitFailure))
 
 import Data.List
-
-data StructuralType = Attributes {
-      type_name :: Maybe String
-    , type_attributes :: Set String
-}
-
-typeDifference :: StructuralType -> StructuralType -> Set String
-typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 Set.\\ s2
-
-typeToString :: FunctionType -> String
-typeToString (args, ret) = intercalate " -> " $ map show (args ++ [ret])
-
-setTypeName :: String -> StructuralType -> StructuralType
-setTypeName str typ = typ {type_name = Just str}
-
-getTypeName :: StructuralType -> String
-getTypeName (Attributes Nothing _) = "?"
-getTypeName (Attributes (Just s) _) = s
-
-
-fromSet :: Set String -> StructuralType
-fromSet = Attributes Nothing
-
-fromList :: [String] -> StructuralType
-fromList = fromSet . Set.fromList
-
-toList :: StructuralType -> [String]
-toList (Attributes _ s) = Set.toList s
-
-emptyType :: StructuralType
-emptyType = Attributes Nothing Set.empty
-
-singletonType :: String -> StructuralType
-singletonType = Attributes Nothing . Set.singleton
-
-addAttribute :: String -> StructuralType -> StructuralType
-addAttribute str (Attributes n set) = Attributes n $ Set.insert str set
-
-unionType :: StructuralType -> StructuralType -> StructuralType
-unionType (Attributes n s1) (Attributes _ s2) = Attributes n (Set.union s1 s2)
-
-typeHasAttr :: StructuralType -> String -> Bool
-typeHasAttr (Attributes _ set) str = str `Set.member` set
-
-isCompatibleWith :: StructuralType -> StructuralType -> Bool
-isCompatibleWith (Attributes _ s1) (Attributes _ s2) | Set.null s1 = True
-                                                     | otherwise =  s2 `Set.isSubsetOf` s1
-
-instance Show StructuralType where
-    show (Attributes name strs) =
-        case Set.toList strs of
-            [] -> "Any"
-            l ->
-                fromMaybe "" name ++ "{" ++ intercalate ", " l ++ "}"
-
-type FunctionType = ([StructuralType], StructuralType)
-data Function = Function
-                 String -- name of function
-                 FunctionType -- type of the function
-
-data HClass = HClass
-              String -- name of class
-              StructuralType -- inferred structural type of class
-              (Map String Function) -- member functions
+import Hiss.Builtins
+import Hiss.Types
 
 data HissState e = HissState {
       flags :: Set Flag    -- command line flags
@@ -110,14 +48,6 @@ data HissState e = HissState {
 }
 
 type Hiss e = EitherT String (StateT (HissState e) IO)
-
-builtinGlobalFunctions :: Map String Function
-builtinGlobalFunctions =
-    Map.fromList $ map (\f@(Function name _) -> (name, f))[
-          Function "print" ([emptyType], emptyType)
-        , Function "len" ([fromList ["__len__"]], emptyType)
-        , Function "str" ([fromList ["__str__"]], emptyType)
-    ]
 
 underContext :: String -> Hiss e a -> Hiss e a
 underContext str fn = do
@@ -173,7 +103,7 @@ hissLiftIO :: IO a -> Hiss e a
 hissLiftIO = lift . lift
 
 emptyHissState :: Set Flag -> HissState e
-emptyHissState flags = HissState flags builtinGlobalFunctions Map.empty [] Nothing Nothing
+emptyHissState flags = HissState flags builtinGlobalFunctions builtinGlobalClasses [] Nothing Nothing
 
 runHiss :: Set Flag -> Hiss e a -> IO (Either String a)
 runHiss flags fn = evalStateT (runEitherT fn) (emptyHissState flags)
