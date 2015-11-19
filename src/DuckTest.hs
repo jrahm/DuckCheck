@@ -106,24 +106,30 @@ detectInsanity initmap b = do
 
     where
         detect :: Map String StructuralType -> Statement a -> DuckTest a (Map String StructuralType)
-        detect db stmt =
+        detect db stmt = do
+            verbose $ printf "\x1b[01;32m%s\x1b[00m" (prettyText stmt)
             case stmt of
 
                 {- Handle the case where we are assigning to a function we
                  - know the type of! -}
                 (Assign [Var (Ident vname _) _] (Call (Var (Ident fn _) _) _ _) pos) ->
                  do
+                    verbose "\x1b[01;33mHandled by case 1\x1b[00m"
+
                     f <- getFunction fn
                     typ <- case f of
                                Just (Function _ (_, returnType)) -> return returnType
                                Nothing -> do
                                 emitWarning ("Possible unknown global function " ++ fn) pos
                                 return emptyType
-                    verbose $ "Assign to variable named " ++ vname
+
+                    verbose $ "Assign to variable named " ++ vname ++ " type " ++ show typ ++ "(from function " ++ fn ++ ")"
                     return (Map.insert vname typ db)
 
                 {- Literal string assignment. -}
                 (Assign [Var (Ident vname _) _] (Strings {}) _) -> do
+                    verbose "\x1b[01;33mHandled by case 2\x1b[00m"
+
                     verbose $ prettyText stmt
                     return $ Map.insert vname (toStructuralType strClass) db
 
@@ -131,26 +137,34 @@ detectInsanity initmap b = do
                  - about undefined variables. Simply collect
                  - all the types. Don't worry about trying to
                  - infer the type -}
-                (Assign vars _ _) -> return $
-                    foldl (\m exp ->
-                            case exp of
-                                (Var (Ident vname _) _) -> Map.insert vname emptyType m
-                                _ -> m) db vars
+                (Assign vars _ _) -> do
+                    verbose "\x1b[01;33mHandled by case 3\x1b[00m"
+                    return $
+                        foldl (\m exp ->
+                                case exp of
+                                    (Var (Ident vname _) _) -> Map.insert vname emptyType m
+                                    _ -> m) db vars
 
                 {- Handle insanity for a specific function. This function called
                  - will correctly set the arguments to the correct types
                  - to be used later. -}
                 (Fun {}) -> do
+                    verbose "\x1b[01;33mHandled by case 4\x1b[00m"
+
                     detectInsanityForFunction db stmt
                     return db
 
                 (Class {class_body = body, class_name = Ident name _}) -> do
+                    verbose "\x1b[01;33mHandled by case 5\x1b[00m"
+
                     -- TODO this will cause some problems with name clashes
                     -- between global and local scope.
                     underContext name $ detectInsanity Map.empty body
                     return db
 
                 (Conditional guards elsest _) -> do
+                    verbose "\x1b[01;33mHandled by case 6\x1b[00m"
+
                     verbose "Entering conditional statement!"
                     forM_ guards $ \(expr, body) -> do
                         _ <- detectExp db expr
@@ -159,11 +173,8 @@ detectInsanity initmap b = do
                     detectInsanity db elsest
                     return db
 
-                (StmtExpr expr _) -> detectExp db expr
-                (Return (Just expr) _) -> detectExp db expr
-
                 stmt -> do
-                    verbose $ "Unhandled: " ++ prettyText stmt
+                    verbose "\x1b[01;31mUnhandled\x1b[00m"
                     foldM detectExp db $ walkAllExpressions [stmt]
 
         detectExp :: Map String StructuralType -> Expr a -> DuckTest a (Map String StructuralType)
