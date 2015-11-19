@@ -19,6 +19,7 @@ module DuckTest.Infer.Functions (inferTypeForFunction) where
 import Language.Python.Common
 import DuckTest.Monad
 import DuckTest.AST.Util
+import DuckTest.AST.BinaryOperators
 
 import Control.Monad
 
@@ -104,6 +105,9 @@ inferTypeForVariable varname stmts =
                                 expr -> observeExpr expr
 
                     mconcatMapM inferTypeFromArguments (zip args paramsType)
+
+        observeExpr (BinaryOp op (Var (Ident vname _) _) _ _)
+                    | vname == varname = return $ singletonType (toDunderName op)
 
         observeExpr exp = iterateOverChildren exp
 

@@ -26,6 +26,15 @@ import System.Posix.Types
 import DuckTest.Builtins
 import DuckTest.Types
 
+import DuckTest.AST.BinaryOperators
+
+emitUndefined :: String -> a -> DuckTest a ()
+emitUndefined str = emitWarning (printf "Possible undefined variable %s" str)
+
+emitAttributeError :: String -> String -> a -> DuckTest a ()
+emitAttributeError ident str =
+    emitWarning (printf "Possible attribute error: %s has no attribute %s" ident str)
+
 parsePython :: FilePath -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))
 parsePython fp = do
     version2 <- isVersion2
@@ -193,6 +202,18 @@ detectInsanity initmap b = do
                             let warning = printf "Probable attribute error: %s has no attribute %s" varname attname in
                             emitWarning warning pos
                         return db
+
+            (BinaryOp op (Var (Ident vname pos) _) _ _) ->
+                case Map.lookup vname db of
+
+                    Nothing -> emitUndefined vname pos >> return db
+
+                    (Just typ) -> do
+                        unless (typeHasAttr typ $ toDunderName op) $
+                            emitAttributeError vname (toDunderName op) pos
+
+                        return db
+
             (Call (Var (Ident fnname _) _) args pos) -> do
                 fn <- getGlobalFunction fnname
                 case fn of
