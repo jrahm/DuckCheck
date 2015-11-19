@@ -20,7 +20,7 @@ walkAllExpressions stmts =
 childExpressions :: Expr a -> [Expr a]
 childExpressions exp =
     case exp of
-        Call fn args _ -> fn : map arg2Expr args
+        Call fn args _ -> fn : map getExpression args
         Subscript e1 e2 _ -> [e1, e2]
         SlicedExpr e1 _ _ -> return e1 -- todo implement strides
         CondExpr e1 e2 e3 _ -> [e1, e2, e3]
@@ -50,11 +50,6 @@ childExpressions exp =
         _ -> []
 
 
-arg2Expr :: Argument a -> Expr a
-arg2Expr (ArgExpr e _) = e
-arg2Expr (ArgVarArgsPos e _) = e
-arg2Expr (ArgVarArgsKeyword e _) = e
-arg2Expr (ArgKeyword _ e _) = e
 
 walkStatements :: Statement a -> [Statement a]
 walkStatements stmt =
@@ -114,3 +109,25 @@ walkExpressions stmt =
         getExps :: [Statement a] -> [Expr a]
         getExps = concatMap walkExpressions
 
+class HasIdentifier a where
+     getIdentifier :: a -> Maybe String
+
+class HasExpression a where
+    getExpression :: a e -> Expr e
+
+instance HasExpression Argument where
+    getExpression (ArgExpr e _) = e
+    getExpression (ArgVarArgsPos e _) = e
+    getExpression (ArgVarArgsKeyword e _) = e
+    getExpression (ArgKeyword _ e _) = e
+
+
+instance HasIdentifier (Parameter a) where
+    getIdentifier s = case s of
+            Param (Ident n _) _ _ _ -> Just n
+            VarArgsPos (Ident n _) _ _ -> Just n
+            VarArgsKeyword (Ident n _) _ _ -> Just n
+            _ -> Nothing
+
+tryGetIdentifier :: (HasIdentifier a) => String -> a -> String
+tryGetIdentifier str = fromMaybe str . getIdentifier

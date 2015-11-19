@@ -39,14 +39,29 @@ parsePython fp = do
  - the span of the list of statements given. -}
 inferTypeForVariable :: forall e. String -> [Statement e] -> Hiss e StructuralType
 inferTypeForVariable varname stmts =
-        let expressions = concatMap walkExpressions stmts in
+    {- This function, we walk through each expression in the
+     - body of statements. In each expression, we look to see
+     - how the parameter is being used. -}
         foldl unionType emptyType <$> mapM observeExpr expressions
     where
+        {- All of the expressions in the current body of
+         - statements. We will fold through these and look
+         - for when a function will be called -}
+        expressions = concatMap walkExpressions stmts
+
+        {- An observation of the pattern `x.y` we use this
+         - to infer that the argument `x` must have an attribute
+         - `y` -}
         observeExpr (Dot (Var (Ident name _) _) (Ident attname _) _)
                      | name == varname =
                         verbose ("Found attribute usage: " ++ attname) >>
                         return (singletonType attname)
 
+        {- An observation where we call a function with x as an argument.
+         - We use this to retrieve more information about `x`. Specifically,
+         - look up what `x` requires for this function to be valid.
+         -
+         - This observation is of function(..., x, ...)-}
         observeExpr ex@(Call (Var (Ident fnname _) pos) args _) = do
 
              mfn <- getFunction fnname
@@ -66,11 +81,16 @@ inferTypeForVariable varname stmts =
                         emitWarning ("Possible too many arguments for " ++ fnname) pos
 
                     let inferTypeFromArguments current (expr', exprType) =
-                            let expr = arg2Expr expr' in
-                            case expr of
+                            {- Iterate through the arguments to the observed
+                             - function call. If the name alone is observed,
+                             - then use infer the type for the argument, otherwise
+                             - search for evidence in the expression -}
+                            case getExpression expr' of
+
                                 (Var (Ident nm _) _) | nm == varname ->
                                     return $ unionType current exprType
-                                _ -> unionType current <$> observeExpr expr
+
+                                expr -> unionType current <$> observeExpr expr
 
                     foldM inferTypeFromArguments emptyType (zip args paramsType)
 
@@ -87,21 +107,22 @@ inferTypeForVariable varname stmts =
  - structural format -}
 inferTypeForFunction :: Statement a -> Hiss a ([StructuralType], StructuralType)
 inferTypeForFunction (Fun _ params _ body _) =
-    let paramNames :: [String]
-        paramNames = map getParamName params
-        in do
 
-        argTypes <- mapM (`inferTypeForVariable`body) paramNames
-        let returnType = emptyType
-        return (argTypes, returnType)
+    {- Get a list of the names of the parameters to the function. For
+     - each of those parameters, try to infer the type of each.
+     -
+     - Return type is not yet able to be inferred. This is a TODO -}
+    let parameterIdentifiers :: [String]
+        parameterIdentifiers = map (tryGetIdentifier "") params
 
-    where getParamName s = case s of
-            Param (Ident n _) _ _ _ -> n
-            VarArgsPos (Ident n _) _ _ -> n
-            VarArgsKeyword (Ident n _) _ _ -> n
-            _ -> ""
+        returnType = emptyType -- cannot yet infer return type
+        in
+        (,returnType) <$> mapM (`inferTypeForVariable`body) parameterIdentifiers
 
-inferTypeForFunction _ = die "inferTypeForFunction called on non function!"
+
+inferTypeForFunction _ =
+    {- This function was called on something not a function -}
+    die "inferTypeForFunction called on non function!"
 
 mkClass :: Statement a -> Hiss a (StructuralType, Map String Function)
 mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do

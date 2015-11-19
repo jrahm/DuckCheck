@@ -14,6 +14,12 @@ data StructuralType = Attributes {
     , type_attributes :: Set String
 }
 
+instance Monoid StructuralType where
+
+    mappend = unionType
+
+    mempty = emptyType
+
 typeDifference :: StructuralType -> StructuralType -> Set String
 typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 Set.\\ s2
 
