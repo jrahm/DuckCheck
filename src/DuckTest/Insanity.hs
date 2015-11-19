@@ -28,7 +28,7 @@ detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body,
        case fn of
 
         Nothing ->
-            verbose $ printf "Function magically appeared: %s" name
+            Info %% printf "Function magically appeared: %s" name
 
         Just (Function _ (paramTypes, _)) -> do
 
@@ -39,26 +39,26 @@ detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body,
 
                 initmap = Map.fromList (catMaybes argNamesAndTypes) `Map.union` curmap
 
-            verbose $ "Recursively check function " ++ name ++ ". Variable map: " ++ show initmap
+            Debug %% "Recursively check function " ++ name ++ ". Variable map: " ++ show initmap
             runChecker detectInsanity initmap body
 
 detectInsanity :: Checker (Map String StructuralType) a
 detectInsanity initmap b = do
-    verbose "!!!! Insanity Detection Phase !!!!"
-    verbose (show initmap)
+    Debug %% "!!!! Insanity Detection Phase !!!!"
+    Debug %% show initmap
     void $ foldM detect initmap b
 
     where
         detect :: Map String StructuralType -> Statement a -> DuckTest a (Map String StructuralType)
         detect db stmt = do
-            verbose $ printf "\x1b[01;32m%s\x1b[00m" (prettyText stmt)
+            Trace %% printf "\x1b[01;32m%s\x1b[00m" (prettyText stmt)
             case stmt of
 
                 {- Handle the case where we are assigning to a function we
                  - know the type of! -}
                 (Assign [Var (Ident vname _) _] (Call (Var (Ident fn _) _) _ _) pos) ->
                  do
-                    verbose "\x1b[01;33mHandled by case 1\x1b[00m"
+                    Trace %% "\x1b[01;33mHandled by case 1\x1b[00m"
 
                     f <- getFunction fn
                     typ <- case f of
@@ -67,14 +67,13 @@ detectInsanity initmap b = do
                                 emitWarning ("Possible unknown global function " ++ fn) pos
                                 return emptyType
 
-                    verbose $ "Assign to variable named " ++ vname ++ " type " ++ show typ ++ "(from function " ++ fn ++ ")"
+                    Debug %% "Assign to variable named " ++ vname ++ " type " ++ show typ ++ "(from function " ++ fn ++ ")"
                     return (Map.insert vname typ db)
 
                 {- Literal string assignment. -}
                 (Assign [Var (Ident vname _) _] (Strings {}) _) -> do
-                    verbose "\x1b[01;33mHandled by case 2\x1b[00m"
+                    Trace %% "\x1b[01;33mHandled by case 2\x1b[00m"
 
-                    verbose $ prettyText stmt
                     return $ Map.insert vname (toStructuralType strClass) db
 
                 {- General catch all assignment code to shut up
@@ -82,7 +81,7 @@ detectInsanity initmap b = do
                  - all the types. Don't worry about trying to
                  - infer the type -}
                 (Assign vars _ _) -> do
-                    verbose "\x1b[01;33mHandled by case 3\x1b[00m"
+                    Trace %% "\x1b[01;33mHandled by case 3\x1b[00m"
                     return $
                         foldl (\m exp ->
                                 case exp of
@@ -93,13 +92,13 @@ detectInsanity initmap b = do
                  - will correctly set the arguments to the correct types
                  - to be used later. -}
                 (Fun {}) -> do
-                    verbose "\x1b[01;33mHandled by case 4\x1b[00m"
+                    Trace %% "\x1b[01;33mHandled by case 4\x1b[00m"
 
                     detectInsanityForFunction db stmt
                     return db
 
                 (Class {class_body = body, class_name = Ident name _}) -> do
-                    verbose "\x1b[01;33mHandled by case 5\x1b[00m"
+                    Trace %% "\x1b[01;33mHandled by case 5\x1b[00m"
 
                     -- TODO this will cause some problems with name clashes
                     -- between global and local scope.
@@ -107,9 +106,9 @@ detectInsanity initmap b = do
                     return db
 
                 (Conditional guards elsest _) -> do
-                    verbose "\x1b[01;33mHandled by case 6\x1b[00m"
+                    Trace %% "\x1b[01;33mHandled by case 6\x1b[00m"
+                    Trace %% "Entering conditional statement!"
 
-                    verbose "Entering conditional statement!"
                     forM_ guards $ \(expr, body) -> do
                         _ <- detectExp db expr
                         detectInsanity db body
@@ -118,7 +117,7 @@ detectInsanity initmap b = do
                     return db
 
                 stmt -> do
-                    verbose "\x1b[01;31mUnhandled\x1b[00m"
+                    Trace %% "\x1b[01;31mUnhandled\x1b[00m"
                     foldM detectExp db $ recursivelyWalkExpressions [stmt]
 
         detectExp :: Map String StructuralType -> Expr a -> DuckTest a (Map String StructuralType)
@@ -154,7 +153,7 @@ detectInsanity initmap b = do
                             case arg of
                                 ArgExpr (Var (Ident name _) pos) _ ->
                                     maybe' (Map.lookup name db) (do
-                                        verbose $ name ++ " not found in " ++ show db
+                                        Debug %% name ++ " not found in " ++ show db
                                         possibleUndefinedError name pos
                                         return (emptyType, pos)) (return . (,pos))
 

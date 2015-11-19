@@ -14,12 +14,12 @@ iterateAST stmt =
     case stmt of
         (Fun {fun_name=(Ident name _)}) -> do
             typ@(args, ret) <- inferTypeForFunction stmt
-            verbose $ printf "Type for %s: %s" name (typeToString typ)
+            Debug %% printf "Type for %s: %s" name (typeToString typ)
             addFunction (Function name typ)
 
         (Class {class_name=(Ident name _)}) -> do
             (clsType, members) <- mkClass stmt
-            verbose $ printf "Class %s. Type: %s" name (show clsType)
+            Debug %% printf "Class %s. Type: %s" name (show clsType)
             addClass (HClass name clsType members)
 
         _ -> return ()

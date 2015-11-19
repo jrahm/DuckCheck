@@ -52,20 +52,18 @@ inferTypeForVariable varname stmts =
     {- This function, we walk through each expression in the
      - body of statements. In each expression, we look to see
      - how the parameter is being used. -}
-        mconcat <$> mapM observeExpr expressions
-    where
-        {- All of the expressions in the current body of
-         - statements. We will fold through these and look
-         - for when a function will be called -}
-        expressions = allExpressions stmts
+        mconcatMapM observeExpr (allExpressions stmts)
 
-        observeExpr :: Expr a -> DuckTest a StructuralType
+    where
+
         {- An observation of the pattern `x.y` we use this
          - to infer that the argument `x` must have an attribute
          - `y` -}
+        observeExpr :: Expr a -> DuckTest a StructuralType
+
         observeExpr (Dot (Var (Ident name _) _) (Ident attname _) _)
                      | name == varname =
-                        verbose ("Found attribute usage: " ++ attname) >>
+                        (Debug %% printf "Found attribute usage: %s" attname) >>
                         return (singletonType attname)
 
         {- An observation where we call a function with x as an argument.

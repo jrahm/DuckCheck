@@ -1,6 +1,8 @@
 module DuckTest.Flags where
 
+data LogLevel = Trace | Debug | Info | Warn | Error deriving (Eq, Ord, Enum, Show)
+
 data Flag
-      = Verbose |
+      = Verbose LogLevel |
         Version2
-        deriving (Show, Enum, Ord, Eq)
+        deriving (Show, Ord, Eq)

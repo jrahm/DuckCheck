@@ -23,7 +23,7 @@ mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do
         {- Add the init function to the global scope
          - as the name of the class -}
         let typ = (args, structuralType)
-        verbose $ printf "__init__ added as %s with type %s" clname (typeToString typ)
+        Debug %% printf "__init__ added as %s with type %s" clname (typeToString typ)
         addFunction (Function clname typ)
 
     return (structuralType, Map.map (remapFirst structuralType) functions)

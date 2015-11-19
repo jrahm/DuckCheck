@@ -45,9 +45,9 @@ getStartPos sp = case sp of
     (SpanPoint fn r c) -> Just (fn, r, c)
     _ -> Nothing
 
-runDuckTestOnOneFile :: Set Flag -> FilePath -> IO ()
-runDuckTestOnOneFile flags file = do
-    st <- runDuckTestIO flags (runDuckTestM file)
+runDuckTestOnOneFile :: Set Flag -> LogLevel -> FilePath -> IO ()
+runDuckTestOnOneFile flags ll file = do
+    st <- runDuckTestIO flags ll (runDuckTestM file)
     isTerm <- queryTerminal (Fd 1)
 
     let (styleBegin, styleEnd) =

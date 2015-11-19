@@ -1,10 +1,10 @@
-module DuckTest.Monad (DuckTest, runDuckTest, hlog, verbose, isVersion2, hasFlag,
+module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                    die, fromEither, hissLiftIO, runDuckTestIO, StructuralType(..),
                    emptyType, singletonType, unionType, addFunction,
                    addClass, Function(..), HClass(..), emitWarning, getFunction,
                    getWarnings, getClass, typeHasAttr, fromSet, typeToString,
                    underContext, getGlobalFunction, isCompatibleWith, setTypeName,
-                   getTypeName, toList, typeDifference, saveState
+                   getTypeName, toList, typeDifference, saveState, LogLevel(..), (%%)
                    ) where
 
 import DuckTest.Internal.Common
@@ -25,8 +25,10 @@ import System.Exit (exitWith, ExitCode(ExitFailure))
 import DuckTest.Builtins
 import DuckTest.Types
 
+
 data DuckTestState e = DuckTestState {
       flags :: Set Flag    -- command line flags
+    , log_level :: LogLevel
 
       {- Function name to StructuralTypes of arguments to
        - StructuralType of return value -}
@@ -104,15 +106,15 @@ addClass cl@(HClass name _ _) =
 hissLiftIO :: IO a -> DuckTest e a
 hissLiftIO = lift . lift
 
-emptyDuckTestState :: Set Flag -> DuckTestState e
-emptyDuckTestState flags = DuckTestState flags builtinGlobalFunctions builtinGlobalClasses [] Nothing Nothing
+emptyDuckTestState :: Set Flag -> LogLevel -> DuckTestState e
+emptyDuckTestState flags ll = DuckTestState flags ll builtinGlobalFunctions builtinGlobalClasses [] Nothing Nothing
 
-runDuckTest :: Set Flag -> DuckTest e a -> IO (Either String a)
-runDuckTest flags fn = evalStateT (runEitherT fn) (emptyDuckTestState flags)
+runDuckTest :: Set Flag -> LogLevel -> DuckTest e a -> IO (Either String a)
+runDuckTest flags ll fn = evalStateT (runEitherT fn) (emptyDuckTestState flags ll)
 
-runDuckTestIO :: Set Flag -> DuckTest e a -> IO (DuckTestState e)
-runDuckTestIO flags fn =
-    flip execStateT (emptyDuckTestState flags) $ do
+runDuckTestIO :: Set Flag -> LogLevel -> DuckTest e a -> IO (DuckTestState e)
+runDuckTestIO flags ll fn =
+    flip execStateT (emptyDuckTestState flags ll) $ do
 
             either <- runEitherT fn
 
@@ -126,10 +128,12 @@ emitWarning str e = lift (modify $ \hs -> hs {warnings = (str, e):warnings hs})
 hlog :: String -> DuckTest e ()
 hlog str = lift $ lift $ putStrLn str
 
-verbose :: String -> DuckTest e ()
-verbose str = do
-    isVerbose <- (Verbose `elem`) . flags <$> lift get
-    when isVerbose $ hlog str
+(%%) :: LogLevel -> String -> DuckTest e ()
+(%%) ll str = do
+    level <- log_level <$> lift get
+    when (ll >= level) $
+        forM_ (lines str) $ \line ->
+            hlog $ printf "[%s] - %s" (show ll) line
 
 hasFlag :: Flag -> DuckTest e Bool
 hasFlag f = (f `elem`) . flags <$> lift get
@@ -144,3 +148,5 @@ fromEither e = case e of
 
 die :: String -> DuckTest e a
 die = left
+
+infixl 1 %%
