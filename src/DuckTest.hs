@@ -20,6 +20,8 @@ import System.IO
 import Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import System.Posix.Terminal
+import System.Posix.Types
 
 import DuckTest.Builtins
 import DuckTest.Types
@@ -251,6 +253,11 @@ getStartPos sp = case sp of
 runDuckTestOnOneFile :: Set Flag -> FilePath -> IO ()
 runDuckTestOnOneFile flags file = do
     st <- runDuckTestIO flags (runDuckTestM file)
+    isTerm <- queryTerminal (Fd 1)
+
+    let (styleBegin, styleEnd) =
+            if isTerm then ("\x1b[01;31m", "\x1b[0m") else ("", "")
+
     forM_ (getWarnings st) $ \(err, pos) ->
         mapM_ (\(f, r, c) ->
-            hPutStr stderr $ printf "%s(%d:%d): %s\n" f r c err) (getStartPos pos)
+            hPutStr stderr $ printf "%s%s(%d:%d):%s %s\n" styleBegin f r c styleEnd err) (getStartPos pos)
