@@ -4,7 +4,7 @@ module Hiss.Monad (Hiss, runHiss, hlog, verbose, isVersion2, hasFlag,
                    addClass, Function(..), HClass(..), emitWarning, getFunction,
                    getWarnings, getClass, typeHasAttr, fromSet, typeToString,
                    underContext, getGlobalFunction, isCompatibleWith, setTypeName,
-                   getTypeName, toList, typeDifference
+                   getTypeName, toList, typeDifference, saveState
                    ) where
 
 import Data.Maybe (fromMaybe)
@@ -48,6 +48,11 @@ data HissState e = HissState {
 }
 
 type Hiss e = EitherT String (StateT (HissState e) IO)
+
+saveState :: Hiss e a -> Hiss e a
+saveState fn = do
+    st <- lift get
+    fn <* lift (put st)
 
 underContext :: String -> Hiss e a -> Hiss e a
 underContext str fn = do

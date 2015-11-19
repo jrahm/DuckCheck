@@ -150,7 +150,7 @@ detectInsanityForFunction (Fun {fun_name = Ident name _, fun_body = body, fun_ar
 
             initmap = Map.fromList $ catMaybes zipped
         verbose $ "Detect insanity for: " ++ name
-        detectInsanity initmap body
+        runChecker initmap body
 
     where paramZip arg typ =
             case arg of
@@ -289,13 +289,17 @@ iterateAST stmt =
 
         _ -> return ()
 
+runChecker :: Map String StructuralType -> [Statement a] -> Hiss a ()
+runChecker initmap stmts =
+    saveState $ do
+        mapM_ iterateAST stmts
+        detectInsanity initmap stmts
+
 runHissM :: FilePath -> Hiss SrcSpan ()
 runHissM fp = do
     mayStmts <- parsePython fp
     case mayStmts of
-        Just (Module stmts, _) -> do
-            mapM_ iterateAST stmts
-            detectInsanity Map.empty stmts
+        Just (Module stmts, _) -> runChecker Map.empty stmts
         Nothing -> return ()
 
 getStartPos :: SrcSpan -> Maybe (String, Int, Int)
