@@ -2,33 +2,23 @@
 {-# LANGUAGE TupleSections #-}
 module DuckTest where
 
-import Control.Monad (foldM, when, unless, void, forM, zipWithM_)
-import Data.Foldable (mapM_, forM_)
-import Data.List
-import Data.Map (Map)
-import Data.Maybe
-import Data.Set (Set)
-import DuckTest.AST.Util
-import DuckTest.Flags
-import DuckTest.Monad
-import DuckTest.Infer.Functions
-import Language.Python.Common
+import DuckTest.Internal.Common
+
 import Language.Python.Version2.Parser as P2
 import Language.Python.Version3.Parser as P3
-import Prelude hiding (mapM_)
+
 import System.IO
-import Text.Printf
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import System.Posix.Terminal
 import System.Posix.Types
 
-import DuckTest.Builtins
-import DuckTest.Types
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+
 import DuckTest.MonadHelper
 import DuckTest.Insanity
-import DuckTest.AST.BinaryOperators
 import DuckTest.Checker
+import DuckTest.Flags
+import DuckTest.Monad
 
 parsePython :: FilePath -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))
 parsePython fp = do
