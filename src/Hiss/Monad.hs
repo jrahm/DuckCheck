@@ -52,7 +52,10 @@ type Hiss e = EitherT String (StateT (HissState e) IO)
 saveState :: Hiss e a -> Hiss e a
 saveState fn = do
     st <- lift get
-    fn <* lift (put st)
+    ret <- fn
+    st' <- lift get
+    lift $ put $ st {warnings = warnings st'}
+    return ret
 
 underContext :: String -> Hiss e a -> Hiss e a
 underContext str fn = do

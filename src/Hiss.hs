@@ -88,12 +88,18 @@ inferTypeForVariable varname stmts =
 inferTypeForFunction :: Statement a -> Hiss a ([StructuralType], StructuralType)
 inferTypeForFunction (Fun _ params _ body _) =
     let paramNames :: [String]
-        paramNames = map (\(Param (Ident n _) _ _ _) -> n) params
+        paramNames = map getParamName params
         in do
 
         argTypes <- mapM (`inferTypeForVariable`body) paramNames
         let returnType = emptyType
         return (argTypes, returnType)
+
+    where getParamName s = case s of
+            Param (Ident n _) _ _ _ -> n
+            VarArgsPos (Ident n _) _ _ -> n
+            VarArgsKeyword (Ident n _) _ _ -> n
+            _ -> ""
 
 inferTypeForFunction _ = die "inferTypeForFunction called on non function!"
 
@@ -136,8 +142,8 @@ mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do
                         Just (singletonType att)
         inferType _ = Nothing
 
-detectInsanityForFunction :: Statement a -> Hiss a ()
-detectInsanityForFunction (Fun {fun_name = Ident name _, fun_body = body, fun_args = args}) =
+detectInsanityForFunction :: Map String StructuralType -> Statement a -> Hiss a ()
+detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body, fun_args = args}) =
     do
        fn <- getFunction name
 
@@ -148,8 +154,8 @@ detectInsanityForFunction (Fun {fun_name = Ident name _, fun_body = body, fun_ar
         let zipped :: [Maybe (String, StructuralType)]
             zipped = zipWith paramZip args paramTypes
 
-            initmap = Map.fromList $ catMaybes zipped
-        verbose $ "Detect insanity for: " ++ name
+            initmap = Map.fromList (catMaybes zipped) `Map.union` curmap
+        verbose $ "Recursively check function " ++ name ++ ". Variable map: " ++ show initmap
         runChecker initmap body
 
     where paramZip arg typ =
@@ -201,7 +207,7 @@ detectInsanity initmap b = do
                  - will correctly set the arguments to the correct types
                  - to be used later. -}
                 (Fun {}) -> do
-                    detectInsanityForFunction stmt
+                    detectInsanityForFunction db stmt
                     return db
 
                 (Class {class_body = body, class_name = Ident name _}) -> do
@@ -253,6 +259,7 @@ detectInsanity initmap b = do
                             case arg of
                                 ArgExpr (Var (Ident name _) pos) _ ->
                                     maybe (do
+                                        verbose $ name ++ " not found in " ++ show db
                                         emitWarning ("Possible undefined variable " ++ name) pos
                                         return (emptyType, pos)) (return . (,pos)) $ Map.lookup name db
                                 _ -> return (emptyType, pos)
