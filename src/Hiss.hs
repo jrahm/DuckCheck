@@ -42,13 +42,14 @@ inferTypeForVariable varname stmts =
     {- This function, we walk through each expression in the
      - body of statements. In each expression, we look to see
      - how the parameter is being used. -}
-        foldl unionType emptyType <$> mapM observeExpr expressions
+        mconcat <$> mapM observeExpr expressions
     where
         {- All of the expressions in the current body of
          - statements. We will fold through these and look
          - for when a function will be called -}
         expressions = concatMap walkExpressions stmts
 
+        observeExpr :: Expr a -> Hiss a StructuralType
         {- An observation of the pattern `x.y` we use this
          - to infer that the argument `x` must have an attribute
          - `y` -}
@@ -80,7 +81,7 @@ inferTypeForVariable varname stmts =
                     when (length args > length paramsType) $
                         emitWarning ("Possible too many arguments for " ++ fnname) pos
 
-                    let inferTypeFromArguments current (expr', exprType) =
+                    let inferTypeFromArguments (expr', exprType) =
                             {- Iterate through the arguments to the observed
                              - function call. If the name alone is observed,
                              - then use infer the type for the argument, otherwise
@@ -88,17 +89,16 @@ inferTypeForVariable varname stmts =
                             case getExpression expr' of
 
                                 (Var (Ident nm _) _) | nm == varname ->
-                                    return $ unionType current exprType
+                                    return exprType
 
-                                expr -> unionType current <$> observeExpr expr
+                                expr -> observeExpr expr
 
-                    foldM inferTypeFromArguments emptyType (zip args paramsType)
+                    mconcatMapM inferTypeFromArguments (zip args paramsType)
 
         observeExpr exp = iterateOverChildren exp
 
         {- infer through the child expressions of this expression -}
-        iterateOverChildren exp = foldl unionType emptyType <$>
-                                    mapM observeExpr (childExpressions exp)
+        iterateOverChildren exp = mconcatMapM observeExpr (childExpressions exp)
 
 
 {- This function will take a Python function and infer the type
@@ -155,36 +155,33 @@ mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do
                           ) Map.empty body
 
         selfAssignments :: StructuralType
-        selfAssignments =
-            foldl unionType emptyType $ mapMaybe inferType $ walkStatements clazz
+        selfAssignments = mconcatMap inferType (walkStatements clazz)
 
-        inferType :: Statement a -> Maybe StructuralType
-        inferType (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] _ _) =
-                        Just (singletonType att)
-        inferType _ = Nothing
+        inferType :: Statement a -> StructuralType
+        inferType (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] _ _) = singletonType att
+        inferType _ = emptyType
 
 detectInsanityForFunction :: Map String StructuralType -> Statement a -> Hiss a ()
 detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body, fun_args = args}) =
     do
        fn <- getFunction name
 
-       when (isNothing fn) $
-        die $ printf "Function magically appeared: %s" name
+       case fn of
 
-       forM_ fn $ \(Function _ (paramTypes, _)) -> do
-        let zipped :: [Maybe (String, StructuralType)]
-            zipped = zipWith paramZip args paramTypes
+        Nothing ->
+            verbose $ printf "Function magically appeared: %s" name
 
-            initmap = Map.fromList (catMaybes zipped) `Map.union` curmap
-        verbose $ "Recursively check function " ++ name ++ ". Variable map: " ++ show initmap
-        runChecker initmap body
+        Just (Function _ (paramTypes, _)) -> do
 
-    where paramZip arg typ =
-            case arg of
-                Param {param_name = Ident name _} -> Just (name, typ)
-                VarArgsPos {param_name = Ident name _} -> Just (name, typ)
-                VarArgsKeyword {param_name = Ident name _} -> Just (name, typ)
-                _ -> Nothing
+            let argNamesAndTypes :: [Maybe (String, StructuralType)]
+                argNamesAndTypes = zipWith (\arg typ ->
+                                            (,typ) <$> getIdentifier arg)
+                                              args paramTypes
+
+                initmap = Map.fromList (catMaybes argNamesAndTypes) `Map.union` curmap
+
+            verbose $ "Recursively check function " ++ name ++ ". Variable map: " ++ show initmap
+            runChecker initmap body
 
 
 detectInsanity :: Map String StructuralType -> [Statement a] -> Hiss a ()
@@ -216,8 +213,10 @@ detectInsanity initmap b = do
                     verbose $ prettyText stmt
                     return $ Map.insert vname (toStructuralType strClass) db
 
-                {- General cach all assignment code to shut up
-                 - about undefined variables -}
+                {- General catch all assignment code to shut up
+                 - about undefined variables. Simply collect
+                 - all the types. Don't worry about trying to
+                 - infer the type -}
                 (Assign vars _ _) -> return $
                     foldl (\m exp ->
                             case exp of

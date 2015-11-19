@@ -131,3 +131,12 @@ instance HasIdentifier (Parameter a) where
 
 tryGetIdentifier :: (HasIdentifier a) => String -> a -> String
 tryGetIdentifier str = fromMaybe str . getIdentifier
+
+mconcatMap :: (Monoid m) => (a -> m) -> [a] -> m
+mconcatMap fn = mconcat . map fn
+
+mconcatMapM :: (Monoid mo, Monad m) => (a -> m mo) -> [a] -> m mo
+mconcatMapM fn lst = mconcat <$> mapM fn lst
+
+mconcatMapMaybe :: (Monoid m) => (a -> Maybe m) -> [a] -> m
+mconcatMapMaybe fn = mconcat . mapMaybe fn
