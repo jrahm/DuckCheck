@@ -10,8 +10,8 @@ import System.IO
 
 import Data.Set (Set, fromList)
 
-import Hiss.Flags
-import Hiss
+import DuckTest.Flags
+import DuckTest
 
 flags :: [OptDescr Flag]
 flags = [  Option ['2'] [] (NoArg Version2)
@@ -22,7 +22,7 @@ flags = [  Option ['2'] [] (NoArg Version2)
 runFilesWithArgs :: [Flag] -> [String] -> IO ()
 runFilesWithArgs opts =
     let optset = fromList opts in
-        mapM_ (runHissOnOneFile optset)
+        mapM_ (runDuckTestOnOneFile optset)
 
 main :: IO ()
 main = (>>=) getArgs $ \argv ->

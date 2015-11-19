@@ -1,4 +1,4 @@
-module Hiss.AST.Util where
+module DuckTest.AST.Util where
 
 import Language.Python.Common
 import Data.Maybe

@@ -1,11 +1,11 @@
-module Hiss.Builtins where
+module DuckTest.Builtins where
 
 import Data.Set (Set)
 import Data.Map (Map)
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
-import Hiss.Types
+import DuckTest.Types
 
 builtinGlobalFunctions :: Map String Function
 builtinGlobalFunctions =

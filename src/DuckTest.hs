@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
-module Hiss where
+module DuckTest where
 
 import Control.Monad (foldM, when, unless, void, forM, zipWithM_)
 import Data.Foldable (mapM_, forM_)
@@ -8,10 +8,10 @@ import Data.List
 import Data.Map (Map)
 import Data.Maybe
 import Data.Set (Set)
-import Hiss.AST.Util
-import Hiss.Flags
-import Hiss.Monad
-import Hiss.Infer.Functions
+import DuckTest.AST.Util
+import DuckTest.Flags
+import DuckTest.Monad
+import DuckTest.Infer.Functions
 import Language.Python.Common
 import Language.Python.Version2.Parser as P2
 import Language.Python.Version3.Parser as P3
@@ -21,10 +21,10 @@ import Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Hiss.Builtins
-import Hiss.Types
+import DuckTest.Builtins
+import DuckTest.Types
 
-parsePython :: FilePath -> Hiss SrcSpan (Maybe (ModuleSpan, [Token]))
+parsePython :: FilePath -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))
 parsePython fp = do
     version2 <- isVersion2
     sourceCode <- hissLiftIO (readFile fp)
@@ -36,7 +36,7 @@ parsePython fp = do
         Right a -> return (Just a)
 
 
-mkClass :: Statement a -> Hiss a (StructuralType, Map String Function)
+mkClass :: Statement a -> DuckTest a (StructuralType, Map String Function)
 mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do
     functions <- topFunctions -- the functions in the body
     let initFn = Map.lookup "__init__" functions
@@ -73,7 +73,7 @@ mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do
         inferType (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] _ _) = singletonType att
         inferType _ = emptyType
 
-detectInsanityForFunction :: Map String StructuralType -> Statement a -> Hiss a ()
+detectInsanityForFunction :: Map String StructuralType -> Statement a -> DuckTest a ()
 detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body, fun_args = args}) =
     do
        fn <- getFunction name
@@ -96,14 +96,14 @@ detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body,
             runChecker initmap body
 
 
-detectInsanity :: Map String StructuralType -> [Statement a] -> Hiss a ()
+detectInsanity :: Map String StructuralType -> [Statement a] -> DuckTest a ()
 detectInsanity initmap b = do
     verbose "!!!! Insanity Detection Phase !!!!"
     verbose (show initmap)
     void $ foldM detect initmap b
 
     where
-        detect :: Map String StructuralType -> Statement a -> Hiss a (Map String StructuralType)
+        detect :: Map String StructuralType -> Statement a -> DuckTest a (Map String StructuralType)
         detect db stmt =
             case stmt of
 
@@ -164,7 +164,7 @@ detectInsanity initmap b = do
                     verbose $ "Unhandled: " ++ prettyText stmt
                     foldM detectExp db $ walkAllExpressions [stmt]
 
-        detectExp :: Map String StructuralType -> Expr a -> Hiss a (Map String StructuralType)
+        detectExp :: Map String StructuralType -> Expr a -> DuckTest a (Map String StructuralType)
         detectExp db exp = case exp of
             (Dot (Var (Ident varname _) pos) (Ident attname _) _) ->
 
@@ -213,7 +213,7 @@ detectInsanity initmap b = do
                     fn
 
 
-iterateAST :: Statement a -> Hiss a ()
+iterateAST :: Statement a -> DuckTest a ()
 iterateAST stmt =
     case stmt of
         (Fun {fun_name=(Ident name _)}) -> do
@@ -228,14 +228,14 @@ iterateAST stmt =
 
         _ -> return ()
 
-runChecker :: Map String StructuralType -> [Statement a] -> Hiss a ()
+runChecker :: Map String StructuralType -> [Statement a] -> DuckTest a ()
 runChecker initmap stmts =
     saveState $ do
         mapM_ iterateAST stmts
         detectInsanity initmap stmts
 
-runHissM :: FilePath -> Hiss SrcSpan ()
-runHissM fp = do
+runDuckTestM :: FilePath -> DuckTest SrcSpan ()
+runDuckTestM fp = do
     mayStmts <- parsePython fp
     case mayStmts of
         Just (Module stmts, _) -> runChecker Map.empty stmts
@@ -248,9 +248,9 @@ getStartPos sp = case sp of
     (SpanPoint fn r c) -> Just (fn, r, c)
     _ -> Nothing
 
-runHissOnOneFile :: Set Flag -> FilePath -> IO ()
-runHissOnOneFile flags file = do
-    st <- runHissIO flags (runHissM file)
+runDuckTestOnOneFile :: Set Flag -> FilePath -> IO ()
+runDuckTestOnOneFile flags file = do
+    st <- runDuckTestIO flags (runDuckTestM file)
     forM_ (getWarnings st) $ \(err, pos) ->
         mapM_ (\(f, r, c) ->
             hPutStr stderr $ printf "%s(%d:%d): %s\n" f r c err) (getStartPos pos)

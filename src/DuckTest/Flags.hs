@@ -1,4 +1,4 @@
-module Hiss.Flags where
+module DuckTest.Flags where
 
 data Flag
       = Verbose |

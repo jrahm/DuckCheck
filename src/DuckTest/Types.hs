@@ -1,4 +1,4 @@
-module Hiss.Types where
+module DuckTest.Types where
 
 import Data.Set (Set)
 import Data.Map (Map)

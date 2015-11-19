@@ -14,11 +14,11 @@
  - attributes used by the function on that argument
  -}
 
-module Hiss.Infer.Functions (inferTypeForFunction) where
+module DuckTest.Infer.Functions (inferTypeForFunction) where
 
 import Language.Python.Common
-import Hiss.Monad
-import Hiss.AST.Util
+import DuckTest.Monad
+import DuckTest.AST.Util
 
 import Control.Monad
 
@@ -26,7 +26,7 @@ import Control.Monad
  - of this function. The type infered from this function is
  - of the type [args] -> return type. All the types are in a
  - structural format -}
-inferTypeForFunction :: Statement a -> Hiss a ([StructuralType], StructuralType)
+inferTypeForFunction :: Statement a -> DuckTest a ([StructuralType], StructuralType)
 inferTypeForFunction (Fun _ params _ body _) =
 
     {- Get a list of the names of the parameters to the function. For
@@ -47,7 +47,7 @@ inferTypeForFunction _ =
 
 {- Collects and infers the type of a variable name over
  - the span of the list of statements given. -}
-inferTypeForVariable :: forall e. String -> [Statement e] -> Hiss e StructuralType
+inferTypeForVariable :: forall e. String -> [Statement e] -> DuckTest e StructuralType
 inferTypeForVariable varname stmts =
     {- This function, we walk through each expression in the
      - body of statements. In each expression, we look to see
@@ -59,7 +59,7 @@ inferTypeForVariable varname stmts =
          - for when a function will be called -}
         expressions = concatMap walkExpressions stmts
 
-        observeExpr :: Expr a -> Hiss a StructuralType
+        observeExpr :: Expr a -> DuckTest a StructuralType
         {- An observation of the pattern `x.y` we use this
          - to infer that the argument `x` must have an attribute
          - `y` -}

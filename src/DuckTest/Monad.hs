@@ -1,5 +1,5 @@
-module Hiss.Monad (Hiss, runHiss, hlog, verbose, isVersion2, hasFlag,
-                   die, fromEither, hissLiftIO, runHissIO, StructuralType(..),
+module DuckTest.Monad (DuckTest, runDuckTest, hlog, verbose, isVersion2, hasFlag,
+                   die, fromEither, hissLiftIO, runDuckTestIO, StructuralType(..),
                    emptyType, singletonType, unionType, addFunction,
                    addClass, Function(..), HClass(..), emitWarning, getFunction,
                    getWarnings, getClass, typeHasAttr, fromSet, typeToString,
@@ -17,7 +17,7 @@ import Control.Monad.Trans.Either
 
 import Control.Monad (when)
 
-import Hiss.Flags
+import DuckTest.Flags
 import Data.Set (Set)
 import Data.Map (Map)
 
@@ -28,10 +28,10 @@ import System.IO
 import System.Exit (exitWith, ExitCode(ExitFailure))
 
 import Data.List
-import Hiss.Builtins
-import Hiss.Types
+import DuckTest.Builtins
+import DuckTest.Types
 
-data HissState e = HissState {
+data DuckTestState e = DuckTestState {
       flags :: Set Flag    -- command line flags
 
       {- Function name to StructuralTypes of arguments to
@@ -47,9 +47,9 @@ data HissState e = HissState {
     , local_classes :: Maybe (Map String HClass)
 }
 
-type Hiss e = EitherT String (StateT (HissState e) IO)
+type DuckTest e = EitherT String (StateT (DuckTestState e) IO)
 
-saveState :: Hiss e a -> Hiss e a
+saveState :: DuckTest e a -> DuckTest e a
 saveState fn = do
     st <- lift get
     ret <- fn
@@ -57,7 +57,7 @@ saveState fn = do
     lift $ put $ st {warnings = warnings st'}
     return ret
 
-underContext :: String -> Hiss e a -> Hiss e a
+underContext :: String -> DuckTest e a -> DuckTest e a
 underContext str fn = do
     st <- lift get
     let (oldFns, oldCls) =
@@ -70,55 +70,55 @@ underContext str fn = do
             lift (put (st {local_functions = Just map})) *> fn <*
                 lift (modify (\st' -> st' {local_functions = oldFns}))
 
--- underContext :: String -> Hiss e a -> Hiss e a
+-- underContext :: String -> DuckTest e a -> DuckTest e a
 -- underContext str fn = do
 --     last <- currentClassName <$> lift get
 --     lift (modify $ \s -> s {currentClassName = Just str}) *>
 --         fn <*
 --             lift (modify $ \s -> s {currentClassName = last})
 
-getWarnings :: HissState e -> [(String, e)]
+getWarnings :: DuckTestState e -> [(String, e)]
 getWarnings = warnings
 
-getGlobalFunction :: String -> Hiss e (Maybe Function)
+getGlobalFunction :: String -> DuckTest e (Maybe Function)
 getGlobalFunction str = do
     st <- lift get
     return $ Map.lookup str (global_functions st)
 
-getFunction :: String -> Hiss e (Maybe Function)
+getFunction :: String -> DuckTest e (Maybe Function)
 getFunction str = do
     st <- lift get
     return $
         (Map.lookup str =<< local_functions st) <|>
         Map.lookup str (global_functions st)
 
-getClass :: String -> Hiss e (Maybe HClass)
+getClass :: String -> DuckTest e (Maybe HClass)
 getClass str = do
     st <- lift get
     return $
         (Map.lookup str =<< local_classes st) <|>
         Map.lookup str (global_classes st)
 
-addFunction :: Function -> Hiss e ()
+addFunction :: Function -> DuckTest e ()
 addFunction fn@(Function name _) =
     lift $ modify (\s -> s {global_functions = Map.insert name fn (global_functions s)})
 
-addClass :: HClass -> Hiss e ()
+addClass :: HClass -> DuckTest e ()
 addClass cl@(HClass name _ _) =
     lift $ modify (\s -> s {global_classes = Map.insert name cl (global_classes s)})
 
-hissLiftIO :: IO a -> Hiss e a
+hissLiftIO :: IO a -> DuckTest e a
 hissLiftIO = lift . lift
 
-emptyHissState :: Set Flag -> HissState e
-emptyHissState flags = HissState flags builtinGlobalFunctions builtinGlobalClasses [] Nothing Nothing
+emptyDuckTestState :: Set Flag -> DuckTestState e
+emptyDuckTestState flags = DuckTestState flags builtinGlobalFunctions builtinGlobalClasses [] Nothing Nothing
 
-runHiss :: Set Flag -> Hiss e a -> IO (Either String a)
-runHiss flags fn = evalStateT (runEitherT fn) (emptyHissState flags)
+runDuckTest :: Set Flag -> DuckTest e a -> IO (Either String a)
+runDuckTest flags fn = evalStateT (runEitherT fn) (emptyDuckTestState flags)
 
-runHissIO :: Set Flag -> Hiss e a -> IO (HissState e)
-runHissIO flags fn =
-    flip execStateT (emptyHissState flags) $ do
+runDuckTestIO :: Set Flag -> DuckTest e a -> IO (DuckTestState e)
+runDuckTestIO flags fn =
+    flip execStateT (emptyDuckTestState flags) $ do
 
             either <- runEitherT fn
 
@@ -126,27 +126,27 @@ runHissIO flags fn =
                 Left s -> liftIO (hPutStrLn stderr s >> exitWith (ExitFailure 1))
                 Right s -> return s
 
-emitWarning :: String -> e -> Hiss e ()
+emitWarning :: String -> e -> DuckTest e ()
 emitWarning str e = lift (modify $ \hs -> hs {warnings = (str, e):warnings hs})
 
-hlog :: String -> Hiss e ()
+hlog :: String -> DuckTest e ()
 hlog str = lift $ lift $ putStrLn str
 
-verbose :: String -> Hiss e ()
+verbose :: String -> DuckTest e ()
 verbose str = do
     isVerbose <- (Verbose `elem`) . flags <$> lift get
     when isVerbose $ hlog str
 
-hasFlag :: Flag -> Hiss e Bool
+hasFlag :: Flag -> DuckTest e Bool
 hasFlag f = (f `elem`) . flags <$> lift get
 
-isVersion2 :: Hiss e Bool
+isVersion2 :: DuckTest e Bool
 isVersion2 = hasFlag Version2
 
-fromEither :: (Show s) => Either s a -> Hiss e a
+fromEither :: (Show s) => Either s a -> DuckTest e a
 fromEither e = case e of
     Left s -> die (show s)
     Right a -> return a
 
-die :: String -> Hiss e a
+die :: String -> DuckTest e a
 die = left

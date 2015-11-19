@@ -1,2 +1,0 @@
-module Hiss.Verbose where
-
