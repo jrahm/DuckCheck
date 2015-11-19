@@ -18,7 +18,7 @@ import DuckTest
 flags :: [OptDescr Flag]
 flags = [  Option ['2'] [] (NoArg Version2)
             "The source file is a Python 2 program, not a Python 3 program."
-         , Option ['v'] [] (OptArg verbosity "VERBOSITY")
+         , Option ['v'] [] (OptArg verbosity "0-4")
             "Run in verbose logging mode." ]
      where
         verbosity Nothing = Verbose Info
@@ -28,7 +28,7 @@ flags = [  Option ['2'] [] (NoArg Version2)
                     "2" -> Verbose Info
                     "3" -> Verbose Debug
                     "4" -> Verbose Trace
-                    _ -> undefined
+                    _ -> Verbose Trace
 
 runFilesWithArgs :: [Flag] -> [String] -> IO ()
 runFilesWithArgs opts =
@@ -51,4 +51,4 @@ main = (>>=) getArgs $ \argv ->
                 hPutStrLn stderr (concat errs ++ usageInfo header flags)
                 exitWith (ExitFailure 1)
 
-        where header = "Usage: hiss [args] [file ...]"
+        where header = "Usage: ducktest [args] [file ...]"
