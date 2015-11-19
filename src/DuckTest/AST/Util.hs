@@ -1,7 +1,7 @@
 module DuckTest.AST.Util where
 
-import Language.Python.Common
-import Data.Maybe
+import DuckTest.Internal.Common
+
 import Control.Monad.Writer.Lazy
 
 class HasExpressions a where

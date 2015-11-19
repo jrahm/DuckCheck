@@ -1,16 +1,13 @@
 module DuckTest.Infer.Classes where
 
-import Language.Python.Common
+import DuckTest.Internal.Common
+
 import DuckTest.Monad
 import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
 
-import Control.Monad
-
-import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Text.Printf
 import DuckTest.Infer.Functions
 
 mkClass :: Statement a -> DuckTest a (StructuralType, Map String Function)

@@ -7,19 +7,14 @@ module DuckTest.Monad (DuckTest, runDuckTest, hlog, verbose, isVersion2, hasFlag
                    getTypeName, toList, typeDifference, saveState
                    ) where
 
-import Data.Maybe (fromMaybe)
+import DuckTest.Internal.Common
 
-import Control.Applicative
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State.Lazy
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Either
 
-import Control.Monad (when)
-
 import DuckTest.Flags
-import Data.Set (Set)
-import Data.Map (Map)
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -27,7 +22,6 @@ import qualified Data.Map as Map
 import System.IO
 import System.Exit (exitWith, ExitCode(ExitFailure))
 
-import Data.List
 import DuckTest.Builtins
 import DuckTest.Types
 

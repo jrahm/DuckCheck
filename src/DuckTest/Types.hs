@@ -1,13 +1,9 @@
 module DuckTest.Types where
 
-import Data.Set (Set)
-import Data.Map (Map)
+import DuckTest.Internal.Common
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
-
-import Data.List (intercalate)
-import Data.Maybe (fromMaybe)
 
 data StructuralType = Attributes {
       type_name :: Maybe String

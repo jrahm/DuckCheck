@@ -2,13 +2,11 @@
 
 module DuckTest.Checker where
 
+import DuckTest.Internal.Common
+
 import DuckTest.Monad
 import DuckTest.Infer.Functions
 import DuckTest.Infer.Classes
-import Language.Python.Common
-
-import Text.Printf
-import Data.Map
 
 
 iterateAST :: Statement a -> DuckTest a ()

@@ -5,24 +5,15 @@
 
 module DuckTest.Insanity where
 
-import Control.Monad
-import Data.List
+import DuckTest.Internal.Common
 
-import Language.Python.Common
-import Data.Maybe
 import DuckTest.Types
 import DuckTest.Monad
 import DuckTest.MonadHelper
 
-import Text.Printf
-
-import Data.Map (Map)
 import qualified Data.Map as Map
-
-import Data.Set (Set)
 import qualified Data.Set as Set
 
-import DuckTest.Infer.Functions
 import DuckTest.AST.Util
 import DuckTest.Builtins
 import DuckTest.AST.BinaryOperators

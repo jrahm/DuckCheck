@@ -16,12 +16,11 @@
 
 module DuckTest.Infer.Functions (inferTypeForFunction) where
 
-import Language.Python.Common
+import DuckTest.Internal.Common
+
 import DuckTest.Monad
 import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
-
-import Control.Monad
 
 {- This function will take a Python function and infer the type
  - of this function. The type infered from this function is
