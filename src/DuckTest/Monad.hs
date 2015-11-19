@@ -4,7 +4,7 @@ module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                    addClass, Function(..), HClass(..), emitWarning, getFunction,
                    getWarnings, getClass, typeHasAttr, fromSet, typeToString,
                    underContext, getGlobalFunction, isCompatibleWith, setTypeName,
-                   getTypeName, toList, typeDifference, saveState, LogLevel(..), (%%)
+                   getTypeName, typeDifference, saveState, LogLevel(..), (%%)
                    ) where
 
 import DuckTest.Internal.Common

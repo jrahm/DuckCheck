@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 module DuckTest.Types where
 
 import DuckTest.Internal.Common
@@ -7,7 +8,7 @@ import qualified Data.Map as Map
 
 data StructuralType = Attributes {
       type_name :: Maybe String
-    , type_attributes :: Set String
+    , type_attributes :: Map String StructuralType
 }
 
 instance Monoid StructuralType where
@@ -16,8 +17,8 @@ instance Monoid StructuralType where
 
     mempty = emptyType
 
-typeDifference :: StructuralType -> StructuralType -> Set String
-typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 Set.\\ s2
+typeDifference :: StructuralType -> StructuralType -> Map String StructuralType
+typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 `Map.difference` s2
 
 typeToString :: FunctionType -> String
 typeToString (args, ret) = intercalate " -> " $ map show (args ++ [ret])
@@ -31,39 +32,47 @@ getTypeName (Attributes (Just s) _) = s
 
 
 fromSet :: Set String -> StructuralType
-fromSet = Attributes Nothing
+fromSet = Attributes Nothing . Map.fromList . map (,emptyType) . Set.toList
 
 fromList :: [String] -> StructuralType
 fromList = fromSet . Set.fromList
 
-toList :: StructuralType -> [String]
-toList (Attributes _ s) = Set.toList s
+toMap :: StructuralType -> Map String StructuralType
+toMap (Attributes _ s) = s
 
 emptyType :: StructuralType
-emptyType = Attributes Nothing Set.empty
+emptyType = Attributes Nothing Map.empty
 
 singletonType :: String -> StructuralType
-singletonType = Attributes Nothing . Set.singleton
+singletonType = Attributes Nothing . flip Map.singleton emptyType
 
-addAttribute :: String -> StructuralType -> StructuralType
-addAttribute str (Attributes n set) = Attributes n $ Set.insert str set
+addAttribute :: String -> StructuralType -> StructuralType -> StructuralType
+addAttribute attr typ (Attributes n m) = Attributes n $ Map.insert attr typ m
 
 unionType :: StructuralType -> StructuralType -> StructuralType
-unionType (Attributes n s1) (Attributes _ s2) = Attributes n (Set.union s1 s2)
+unionType (Attributes n m1) (Attributes _ m2) = Attributes n (Map.unionWith mappend m1 m2)
 
 typeHasAttr :: StructuralType -> String -> Bool
-typeHasAttr (Attributes _ set) str = str `Set.member` set
+typeHasAttr (Attributes _ m) str = Map.member str m
 
 isCompatibleWith :: StructuralType -> StructuralType -> Bool
-isCompatibleWith (Attributes _ s1) (Attributes _ s2) | Set.null s1 = True
-                                                     | otherwise =  s2 `Set.isSubsetOf` s1
+isCompatibleWith (Attributes _ s1) (Attributes _ s2) | Map.null s1 = True
+                                                     | otherwise =
+                                                        and $ for (Map.toList s2) $
+                                                                \(member, typ1) ->
+                                                                    {- Iterate down and make sure all the sub expressions are also
+                                                                     - compatible with eachother. If the expression exists in s2, but
+                                                                     - not in s1, then False is returned, otherwise the compatibility
+                                                                     - of the other two types is returned -}
+                                                                    maybe' (Map.lookup member s1) False $ \typ2 ->
+                                                                        isCompatibleWith typ1 typ2
 
 instance Show StructuralType where
     show (Attributes name strs) =
-        case Set.toList strs of
+        case Map.toList strs of
             [] -> "Any"
             l ->
-                fromMaybe "" name ++ "{" ++ intercalate ", " l ++ "}"
+                fromMaybe "" name ++ "{" ++ intercalate ", " (map (\(str, typ) -> str ++ " :: " ++ show typ) l) ++ "}"
 
 type FunctionType = ([StructuralType], StructuralType)
 data Function = Function

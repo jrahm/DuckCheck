@@ -22,3 +22,12 @@ mconcatMapM fn lst = mconcat <$> mapM fn lst
 
 mconcatMapMaybe :: (Monoid m) => (a -> Maybe m) -> [a] -> m
 mconcatMapMaybe fn = mconcat . mapMaybe fn
+
+{- flip fmap -}
+for :: (Functor f) => f a -> (a -> b) -> f b
+for = flip fmap
+
+{- maybe function, but with args rearranged to make it easier-}
+maybe' :: Maybe a -> b -> (a -> b) -> b
+maybe' a b c = maybe b c a
+

@@ -21,10 +21,6 @@ possibleAttributeError ident = emitWarning . printf "Possible attribute error: %
 possibleUnknownGlobalFunction :: String -> a -> DuckTest a ()
 possibleUnknownGlobalFunction = emitWarning . printf "Possible unknown global function %s"
 
-{- maybe function, but with args rearranged to make it easier-}
-maybe' :: Maybe a -> b -> (a -> b) -> b
-maybe' a b c = maybe b c a
-
 {- Specific instance of Data.Foldable.forM_ for
  - Maybes. Used just to be more expressive. -}
 whenJust :: (Monad m) => Maybe a -> (a -> m ()) -> m ()

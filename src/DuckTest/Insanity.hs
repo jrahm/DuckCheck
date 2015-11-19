@@ -28,7 +28,7 @@ detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body,
        case fn of
 
         Nothing ->
-            Info %% printf "Function magically appeared: %s" name
+            Warn %% printf "Function magically appeared: %s" name
 
         Just (Function _ (paramTypes, _)) -> do
 
@@ -170,5 +170,5 @@ detectInsanity initmap b = do
             emitWarning $
                 printf "Probable Attribute Error: The type %s does not have the attribute(s): %s (needed by %s)"
                     (getTypeName t1)
-                    (intercalate ", " (Set.toList $ typeDifference t2 t1))
+                    (intercalate ", " (map (\(str, typ) -> str ++ " :: " ++ show typ) $ Map.toList $ typeDifference t2 t1))
                     fn
