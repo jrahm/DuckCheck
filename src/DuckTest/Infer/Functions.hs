@@ -58,7 +58,7 @@ inferTypeForVariable varname stmts =
         {- All of the expressions in the current body of
          - statements. We will fold through these and look
          - for when a function will be called -}
-        expressions = concatMap walkExpressions stmts
+        expressions = allExpressions stmts
 
         observeExpr :: Expr a -> DuckTest a StructuralType
         {- An observation of the pattern `x.y` we use this
@@ -112,5 +112,5 @@ inferTypeForVariable varname stmts =
         observeExpr exp = iterateOverChildren exp
 
         {- infer through the child expressions of this expression -}
-        iterateOverChildren exp = mconcatMapM observeExpr (childExpressions exp)
+        iterateOverChildren exp = mconcatMapM observeExpr (subExpressions exp)
 

@@ -184,7 +184,7 @@ detectInsanity initmap b = do
 
                 stmt -> do
                     verbose "\x1b[01;31mUnhandled\x1b[00m"
-                    foldM detectExp db $ walkAllExpressions [stmt]
+                    foldM detectExp db $ recursivelyWalkExpressions [stmt]
 
         detectExp :: Map String StructuralType -> Expr a -> DuckTest a (Map String StructuralType)
         detectExp db exp = case exp of
