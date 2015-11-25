@@ -10,10 +10,10 @@ import DuckTest.Types
 builtinGlobalFunctions :: Map String Function
 builtinGlobalFunctions =
     Map.fromList $ map (\f@(Function name _) -> (name, f))[
-          Function "print" ([emptyType], emptyType)
-        , Function "len" ([fromList ["__len__"]], emptyType)
-        , Function "str" ([fromList ["__str__"]], hclass_type strClass)
-        , Function "open" ([emptyType], emptyType)
+          Function "print" (FunctionType [emptyType] emptyType)
+        , Function "len" (FunctionType [fromList ["__len__"]] emptyType)
+        , Function "str" (FunctionType [fromList ["__str__"]] (hclass_type strClass))
+        , Function "open" (FunctionType [emptyType] emptyType)
     ]
 
 builtinGlobalClasses :: Map String HClass

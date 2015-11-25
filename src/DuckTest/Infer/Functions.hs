@@ -21,13 +21,14 @@ import DuckTest.Internal.Common
 import DuckTest.Monad
 import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
+import DuckTest.Types
 
 {- This function will take a Python function and infer the type
  - of this function. The type infered from this function is
  - of the type [args] -> return type. All the types are in a
  - structural format -}
-inferTypeForFunction :: Statement a -> DuckTest a ([StructuralType], StructuralType)
-inferTypeForFunction (Fun _ params _ body _) =
+inferTypeForFunction :: Statement a -> DuckTest a FunctionType
+inferTypeForFunction (Fun (Ident name _) params _ body _) =
 
     {- Get a list of the names of the parameters to the function. For
      - each of those parameters, try to infer the type of each.
@@ -37,8 +38,11 @@ inferTypeForFunction (Fun _ params _ body _) =
         parameterIdentifiers = map (tryGetIdentifier "") params
 
         returnType = emptyType -- cannot yet infer return type
-        in
-        (,returnType) <$> mapM (`inferTypeForVariable`body) parameterIdentifiers
+        in do
+
+        ret <- flip FunctionType returnType <$> mapM (`inferTypeForVariable`body) parameterIdentifiers
+        Info %% printf "(Inferred) %s :: %s" name (show ret)
+        return ret
 
 
 inferTypeForFunction _ =
@@ -84,7 +88,7 @@ inferTypeForVariable varname stmts =
 
                 {- This function does exist, so let us continue using
                  - normal type-checking routines -}
-                Just (Function _ (paramsType, _)) -> do
+                Just (Function _ (FunctionType paramsType _)) -> do
 
                     when (length args > length paramsType) $
                         emitWarning ("Possible too many arguments for " ++ fnname) pos
@@ -99,6 +103,12 @@ inferTypeForVariable varname stmts =
                                 (Var (Ident nm _) _) | nm == varname ->
                                     return exprType
 
+                                {- We have observed a chain of attribute accesses
+                                 - wstarting with the name of the variable we are trying
+                                 - to use. -}
+                                expr | isDotChain varname expr ->
+                                    return $ liftOverDotChain (dotToList expr) exprType
+
                                 expr -> observeExpr expr
 
                     mconcatMapM inferTypeFromArguments (zip args paramsType)
@@ -111,3 +121,10 @@ inferTypeForVariable varname stmts =
         {- infer through the child expressions of this expression -}
         iterateOverChildren exp = mconcatMapM observeExpr (subExpressions exp)
 
+{- Return true if this is a chain of attribute accesses with
+ - the head of the list being the string given. -}
+isDotChain :: String -> Expr a -> Bool
+isDotChain str expr = (not . null) (dotToList expr) && (head (dotToList expr) == str)
+
+liftOverDotChain :: [String] -> StructuralType -> StructuralType
+liftOverDotChain lst st = foldl (flip liftType) st lst

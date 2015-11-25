@@ -5,6 +5,7 @@ import DuckTest.Internal.Common
 import DuckTest.Monad
 import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
+import DuckTest.Types
 
 import qualified Data.Map as Map
 
@@ -19,18 +20,18 @@ mkClass clazz@(Class {class_body = body, class_name = (Ident clname _)}) = do
              selfAssignments `unionType`
                 fromSet (Map.keysSet functions)
 
-    forM_ initFn $ \(Function _ (args, _)) -> do
+    forM_ initFn $ \(Function _ (FunctionType args _)) -> do
         {- Add the init function to the global scope
          - as the name of the class -}
-        let typ = (args, structuralType)
-        Debug %% printf "__init__ added as %s with type %s" clname (typeToString typ)
+        let typ = FunctionType args structuralType
+        Debug %% printf "__init__ added as %s with type %s" clname (show typ)
         addFunction (Function clname typ)
 
     return (structuralType, Map.map (remapFirst structuralType) functions)
 
     where
-        remapFirst clazzType (Function nm (args, ret)) =
-            Function nm (clazzType : tail args, ret)
+        remapFirst clazzType (Function nm (FunctionType args ret)) =
+            Function nm (FunctionType (clazzType : tail args) ret)
 
         topFunctions = foldM (\map stmt ->
                         case stmt of

@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 module DuckTest.AST.Util where
 
 import DuckTest.Internal.Common
@@ -16,6 +17,45 @@ class HasExpressions a where
  - has-expressions. -}
 allExpressions :: (HasExpressions expr) => [expr a] -> [Expr a]
 allExpressions = concatMap subExpressions
+
+newtype ExprList a e = ExprList [a e]
+data Command a = Recurse | Skip | Only [Expr a]
+
+dotToList :: Expr a -> [String]
+
+dotToList (Dot (Var (Ident name _) _) (Ident attribute _) _) =
+    [name, attribute]
+
+dotToList (Dot expr (Ident attr _) _) =
+    if null (dotToList expr) then []
+        else dotToList expr ++ [attr]
+
+dotToList _ = []
+
+{- Fold a value over a list of expressions -}
+walkExpressions :: (HasExpressions expr) => a -> expr e -> (a -> Expr e -> (a, Command e)) -> a
+walkExpressions init expression fn = walkExpressions' init (subExpressions expression)
+    where walkExpressions' =
+            foldl $ \cur expr ->
+                    let (next, cmd) = fn cur expr in
+                        case cmd of
+                            Recurse -> walkExpressions' next (subExpressions expr)
+                            Skip -> next
+                            Only exps -> walkExpressions' next exps
+
+{- Walks through the expressions in an has-expression using a monad. -}
+walkExpressionM :: (HasExpressions expr, Monad m) => expr e -> (Expr e -> m (Command e)) -> m ()
+walkExpressionM expr = walkExpressions' (subExpressions expr)
+    where
+        walkExpressions' :: (Monad m) => [Expr e] -> (Expr e -> m (Command e)) -> m ()
+        walkExpressions' exprs fn =
+            forM_ exprs $ \exp -> do
+                cmd <- fn exp
+                case cmd of
+                    Recurse -> walkExpressions' (subExpressions exp) fn
+                    Skip -> return ()
+                    Only exps -> walkExpressions' exps fn
+
 
 {- Walk through all expressions in the given list of has-expressions
  - in pre-order format. -}
@@ -123,6 +163,9 @@ instance HasExpression Argument where
     getExpression (ArgVarArgsPos e _) = e
     getExpression (ArgVarArgsKeyword e _) = e
     getExpression (ArgKeyword _ e _) = e
+
+instance (HasExpressions e) => HasExpressions (ExprList e) where
+    subExpressions (ExprList a) = concatMap subExpressions a
 
 
 instance HasIdentifier (Parameter a) where

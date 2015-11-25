@@ -21,7 +21,7 @@ typeDifference :: StructuralType -> StructuralType -> Map String StructuralType
 typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 `Map.difference` s2
 
 typeToString :: FunctionType -> String
-typeToString (args, ret) = intercalate " -> " $ map show (args ++ [ret])
+typeToString (FunctionType args ret) = intercalate " -> " $ map show (args ++ [ret])
 
 setTypeName :: String -> StructuralType -> StructuralType
 setTypeName str typ = typ {type_name = Just str}
@@ -74,7 +74,11 @@ instance Show StructuralType where
             l ->
                 fromMaybe "" name ++ "{" ++ intercalate ", " (map (\(str, typ) -> str ++ " :: " ++ show typ) l) ++ "}"
 
-type FunctionType = ([StructuralType], StructuralType)
+data FunctionType = FunctionType [StructuralType] StructuralType
+instance Show FunctionType where
+    show (FunctionType params ret) =
+            intercalate "->" $ map show (params ++ [ret])
+
 data Function = Function
                  String -- name of function
                  FunctionType -- type of the function
@@ -88,3 +92,7 @@ data HClass = HClass {
               , hclass_methods :: Map String Function -- member functions
               }
 
+{- Lift a type from being observed at the root to being observed
+ - as the type of an attribute of some greater type. -}
+liftType :: String -> StructuralType -> StructuralType
+liftType str st = Attributes Nothing $ Map.singleton str st

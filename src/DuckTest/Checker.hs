@@ -7,13 +7,13 @@ import DuckTest.Internal.Common
 import DuckTest.Monad
 import DuckTest.Infer.Functions
 import DuckTest.Infer.Classes
-
+import DuckTest.Types
 
 iterateAST :: Statement a -> DuckTest a ()
 iterateAST stmt =
     case stmt of
         (Fun {fun_name=(Ident name _)}) -> do
-            typ@(args, ret) <- inferTypeForFunction stmt
+            typ@(FunctionType args ret) <- inferTypeForFunction stmt
             Debug %% printf "Type for %s: %s" name (typeToString typ)
             addFunction (Function name typ)
 

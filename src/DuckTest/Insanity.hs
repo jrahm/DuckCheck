@@ -30,7 +30,7 @@ detectInsanityForFunction curmap (Fun {fun_name = Ident name _, fun_body = body,
         Nothing ->
             Warn %% printf "Function magically appeared: %s" name
 
-        Just (Function _ (paramTypes, _)) -> do
+        Just (Function _ (FunctionType paramTypes _)) -> do
 
             let argNamesAndTypes :: [Maybe (String, StructuralType)]
                 argNamesAndTypes = zipWith (\arg typ ->
@@ -62,7 +62,7 @@ detectInsanity initmap b = do
 
                     f <- getFunction fn
                     typ <- case f of
-                               Just (Function _ (_, returnType)) -> return returnType
+                               Just (Function _ (FunctionType _ returnType)) -> return returnType
                                Nothing -> do
                                 emitWarning ("Possible unknown global function " ++ fn) pos
                                 return emptyType
@@ -148,7 +148,7 @@ detectInsanity initmap b = do
             (Call (Var (Ident fnname _) _) args pos) -> do
                 fn <- getGlobalFunction fnname
                 maybe' fn (possibleUnknownGlobalFunction fnname pos) $
-                    \(Function _ (argTypes, _)) -> do
+                    \(Function _ (FunctionType argTypes _)) -> do
                         inferredArgTypes <- forM args $ \arg ->
                             case arg of
                                 ArgExpr (Var (Ident name _) pos) _ ->
