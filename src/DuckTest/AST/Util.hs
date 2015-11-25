@@ -4,6 +4,8 @@ module DuckTest.AST.Util where
 import DuckTest.Internal.Common
 
 import Control.Monad.Writer.Lazy
+import Control.Monad.Identity
+import Debug.Trace
 
 class HasExpressions a where
 
@@ -12,6 +14,11 @@ class HasExpressions a where
      - from all levels, but rather just the first level
      - expressions -}
     subExpressions :: a e -> [Expr e]
+
+    mapExpressionsM :: (Monad m) => (Expr e -> m (Expr e)) -> a e -> m (a e)
+
+mapExpressions :: (HasExpressions a) => (Expr e -> Expr e) -> a e -> a e
+mapExpressions fn expr = runIdentity $ mapExpressionsM (return . fn) expr
 
 {- Walk through the expressions in a list of
  - has-expressions. -}
@@ -95,6 +102,43 @@ instance HasExpressions Expr where
             List exps _ -> exps
             _ -> []
 
+    mapExpressionsM f exp =
+
+        case exp of
+            Call fn args pos -> Call <$> f fn <*> mapM (mapExpressionsM f) args <*> pure pos
+            Subscript e1 e2 pos -> Subscript <$> f e1 <*> f e2 <*> pure pos
+            CondExpr e1 e2 e3 pos -> CondExpr <$> f e1 <*> f e2 <*> f e3 <*> pure pos
+            BinaryOp nam e1 e2 pos -> BinaryOp nam <$> f e1 <*> f e2 <*> pure pos
+            UnaryOp name e1 pos -> UnaryOp name <$> f e1 <*> pure pos
+            Lambda param body pos -> Lambda param <$> f body <*> pure pos
+            Tuple exprs pos -> Tuple <$> (mapM f exprs) <*> pure pos
+            Yield (Just (YieldFrom expr p)) pos -> (\e -> Yield (Just (YieldFrom e p)) pos) <$> f expr
+            Yield (Just (YieldExpr expr)) pos -> (\e -> Yield (Just (YieldExpr e)) pos) <$> f expr
+
+            Dictionary mappings pos -> Dictionary <$>
+                    mapM (\(DictMappingPair e1 e2) -> DictMappingPair <$> f e1 <*> f e2) mappings <*>
+                    pure pos
+
+            Set exprs pos -> Set <$> mapM f exprs <*> pure pos
+            Starred exp pos -> Starred <$> f exp <*> pure pos
+            Paren exp pos -> Paren <$> f exp <*> pure pos
+            StringConversion exp pos -> StringConversion <$> f exp <*> pure pos
+            Dot exp att pos -> Dot <$> f exp <*> pure att <*> pure pos
+            List exps pos -> List <$> mapM f exps <*> pure pos
+
+            _ -> return exp {- This is some unimplemented stuff ... -}
+
+instance HasExpressions Argument where
+
+    subExpressions (ArgExpr e _) = [e]
+    subExpressions (ArgVarArgsPos e _) = [e]
+    subExpressions (ArgVarArgsKeyword e _) = [e]
+    subExpressions (ArgKeyword _ e _) = [e]
+
+    mapExpressionsM f (ArgExpr e pos) = ArgExpr <$> f e <*> pure pos
+    mapExpressionsM f (ArgVarArgsPos e pos) = ArgVarArgsPos <$> f e <*> pure pos
+    mapExpressionsM f (ArgVarArgsKeyword e pos) = ArgVarArgsKeyword <$> f e <*> pure pos
+    mapExpressionsM f (ArgKeyword str e pos) = ArgKeyword str <$> f e <*> pure pos
 
 instance HasExpressions Statement where
 
@@ -141,6 +185,66 @@ instance HasExpressions Statement where
             Exec exp _ _ -> return exp -- todo implement
 
             _ -> []
+
+    mapExpressionsM f stmt =
+        case stmt of
+            While condition body elsestmt pos ->
+                While <$> f condition <*>
+                mapM (mapExpressionsM f) body <*>
+                mapM (mapExpressionsM f) elsestmt <*> pure pos
+
+            For targets generator body elsestmt pos ->
+                For <$> pure targets
+                    <*> f generator
+                    <*> mapM (mapExpressionsM f) body
+                    <*> mapM (mapExpressionsM f) elsestmt
+                    <*> pure pos
+
+            Fun a b res body pos ->
+                Fun a b <$> mapM (mapExpressionsM f) res
+                        <*> mapM (mapExpressionsM f) body
+                        <*> pure pos
+
+            Class a b body pos ->
+                Class a b <$> mapM (mapExpressionsM f) body
+                          <*> pure pos
+
+            Conditional guard elsestmt pos ->
+                Conditional <$> mapM (\(ex, suite) ->
+                                    (,) <$> f ex <*> mapM (mapExpressionsM f) suite) guard
+                            <*> mapM (mapExpressionsM f) elsestmt
+                            <*> pure pos
+
+            Assign to from pos ->
+                Assign <$> mapM f to
+                       <*> f from
+                       <*> pure pos
+
+            AugmentedAssign to op from pos ->
+                AugmentedAssign <$> f to
+                                <*> pure op
+                                <*> f from
+                                <*> pure pos
+
+            Return exp pos -> Return <$> mapM f exp <*> pure pos
+
+            -- Try body handlers elses finally _ ->
+            --     allExpressions body ++ concatMap (\(Handler _ body _) -> allExpressions body) handlers ++
+            --     allExpressions elses ++ allExpressions finally
+
+            -- Raise exp _ -> [] -- todo implement this
+            -- With context body _ ->
+            --     concatMap (\(ex1, mayex2) -> ex1 : maybeToList mayex2) context ++ allExpressions body
+
+            -- Delete exp _ -> exp
+            StmtExpr exp pos -> StmtExpr <$> f exp <*> pure pos
+
+            -- Assert exp _ -> exp
+            -- Print _ exp _ _ -> exp
+
+            -- Exec exp _ _ -> return exp -- todo implement
+
+            exp -> return exp -- unhandled stuff
 
 {- Iterate through all sub-statements -}
 walkStatements :: Statement a -> [Statement a]

@@ -19,6 +19,7 @@ import DuckTest.Insanity
 import DuckTest.Checker
 import DuckTest.Flags
 import DuckTest.Monad
+import DuckTest.AST.Preprocess
 
 parsePython :: FilePath -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))
 parsePython fp = do
@@ -35,7 +36,9 @@ parsePython fp = do
 runDuckTestM :: FilePath -> DuckTest SrcSpan ()
 runDuckTestM fp =
     (>>=) (parsePython fp) $
-            whenJust' $ \(Module stmts, _) ->
+            whenJust' $ \(Module stmts', _) -> do
+                let stmts = preprocess stmts'
+                Trace %% intercalate "\n" (map prettyText stmts)
                 runChecker detectInsanity Map.empty stmts
 
 getStartPos :: SrcSpan -> Maybe (String, Int, Int)

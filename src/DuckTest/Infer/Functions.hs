@@ -103,9 +103,6 @@ inferTypeForVariable varname stmts =
 
                         mconcatMapM inferTypeFromArguments (zip args paramsType)
 
-        observeExpr (BinaryOp op (Var (Ident vname _) _) _ _)
-                    | vname == varname = return $ singletonType (toDunderName op)
-
         observeExpr exp | isDotChain varname exp =
             return $ typeFromDotList (tail $ dotToList exp)
 
