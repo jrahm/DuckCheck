@@ -75,48 +75,42 @@ inferTypeForVariable varname stmts =
          - look up what `x` requires for this function to be valid.
          -
          - This observation is of function(..., x, ...)-}
-        observeExpr ex@(Call (Var (Ident fnname _) pos) args _) = do
+        observeExpr ex@(Call (Var (Ident fnname _) pos) args _) =
+             (>>=) (getFunction fnname) $
+                 maybe (iterateOverChildren ex) $
+                    \(Function _ (FunctionType paramsType _)) -> do
 
-             mfn <- getFunction fnname
+                        when (length args > length paramsType) $
+                            emitWarning ("Possible too many arguments for " ++ fnname) pos
 
-             case mfn of
-                {- This function may not exist, we should warn, but
-                 - then continue on with the type inference -}
-                Nothing ->
+                        let inferTypeFromArguments (expr', exprType) =
+                                {- Iterate through the arguments to the observed
+                                 - function call. If the name alone is observed,
+                                 - then use infer the type for the argument, otherwise
+                                 - search for evidence in the expression -}
+                                case getExpression expr' of
 
-                    iterateOverChildren ex
+                                    (Var (Ident nm _) _) | nm == varname ->
+                                        return exprType
 
-                {- This function does exist, so let us continue using
-                 - normal type-checking routines -}
-                Just (Function _ (FunctionType paramsType _)) -> do
+                                    {- We have observed a chain of attribute accesses
+                                     - wstarting with the name of the variable we are trying
+                                     - to use. -}
+                                    expr | isDotChain varname expr ->
+                                        return $ liftOverDotChain (dotToList expr) exprType
 
-                    when (length args > length paramsType) $
-                        emitWarning ("Possible too many arguments for " ++ fnname) pos
+                                    expr -> observeExpr expr
 
-                    let inferTypeFromArguments (expr', exprType) =
-                            {- Iterate through the arguments to the observed
-                             - function call. If the name alone is observed,
-                             - then use infer the type for the argument, otherwise
-                             - search for evidence in the expression -}
-                            case getExpression expr' of
-
-                                (Var (Ident nm _) _) | nm == varname ->
-                                    return exprType
-
-                                {- We have observed a chain of attribute accesses
-                                 - wstarting with the name of the variable we are trying
-                                 - to use. -}
-                                expr | isDotChain varname expr ->
-                                    return $ liftOverDotChain (dotToList expr) exprType
-
-                                expr -> observeExpr expr
-
-                    mconcatMapM inferTypeFromArguments (zip args paramsType)
+                        mconcatMapM inferTypeFromArguments (zip args paramsType)
 
         observeExpr (BinaryOp op (Var (Ident vname _) _) _ _)
                     | vname == varname = return $ singletonType (toDunderName op)
 
+        observeExpr exp | isDotChain varname exp =
+            return $ typeFromDotList (tail $ dotToList exp)
+
         observeExpr exp = iterateOverChildren exp
+
 
         {- infer through the child expressions of this expression -}
         iterateOverChildren exp = mconcatMapM observeExpr (subExpressions exp)
@@ -127,4 +121,4 @@ isDotChain :: String -> Expr a -> Bool
 isDotChain str expr = (not . null) (dotToList expr) && (head (dotToList expr) == str)
 
 liftOverDotChain :: [String] -> StructuralType -> StructuralType
-liftOverDotChain lst st = foldl (flip liftType) st lst
+liftOverDotChain lst st = foldr liftType st $ tail lst

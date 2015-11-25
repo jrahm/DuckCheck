@@ -77,7 +77,7 @@ instance Show StructuralType where
 data FunctionType = FunctionType [StructuralType] StructuralType
 instance Show FunctionType where
     show (FunctionType params ret) =
-            intercalate "->" $ map show (params ++ [ret])
+            intercalate " -> " $ map show (params ++ [ret])
 
 data Function = Function
                  String -- name of function
@@ -96,3 +96,6 @@ data HClass = HClass {
  - as the type of an attribute of some greater type. -}
 liftType :: String -> StructuralType -> StructuralType
 liftType str st = Attributes Nothing $ Map.singleton str st
+
+typeFromDotList :: [String] -> StructuralType
+typeFromDotList = foldr liftType emptyType
