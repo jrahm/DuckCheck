@@ -4,5 +4,6 @@ data LogLevel = Trace | Debug | Info | Warn | Error deriving (Eq, Ord, Enum, Sho
 
 data Flag
       = Verbose LogLevel |
-        Version2
+        Version2         |
+        PreprocessOnly
         deriving (Show, Ord, Eq)

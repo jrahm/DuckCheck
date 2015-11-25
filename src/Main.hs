@@ -19,7 +19,9 @@ flags :: [OptDescr Flag]
 flags = [  Option ['2'] [] (NoArg Version2)
             "The source file is a Python 2 program, not a Python 3 program."
          , Option ['v'] [] (OptArg verbosity "0-4")
-            "Run in verbose logging mode." ]
+            "Run in verbose logging mode."
+         , Option ['P'] [] (NoArg PreprocessOnly)
+            "Stop after preprocessing"]
      where
         verbosity Nothing = Verbose Info
         verbosity (Just s) = case s of
@@ -32,7 +34,7 @@ flags = [  Option ['2'] [] (NoArg Version2)
 
 runFilesWithArgs :: [Flag] -> [String] -> IO ()
 runFilesWithArgs opts =
-    let (Verbose ll) = fromMaybe (Verbose Info) $ listToMaybe (filter isVerboseFlag opts)
+    let (Verbose ll) = fromMaybe (Verbose Warn) $ listToMaybe (filter isVerboseFlag opts)
         optset = fromList opts in
             mapM_ (runDuckTestOnOneFile optset ll)
 

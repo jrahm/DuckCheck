@@ -31,3 +31,8 @@ for = flip fmap
 maybe' :: Maybe a -> b -> (a -> b) -> b
 maybe' a b c = maybe b c a
 
+unless' :: (Monad m) => m Bool -> m () -> m ()
+unless' cond fn = cond >>= flip unless fn
+
+when' :: (Monad m) => m Bool -> m () -> m ()
+when' cond fn = cond >>= flip when fn

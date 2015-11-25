@@ -39,7 +39,8 @@ runDuckTestM fp =
             whenJust' $ \(Module stmts', _) -> do
                 let stmts = preprocess stmts'
                 Trace %% intercalate "\n" (map prettyText stmts)
-                runChecker detectInsanity Map.empty stmts
+                unless' (hasFlag PreprocessOnly) $
+                    runChecker detectInsanity Map.empty stmts
 
 getStartPos :: SrcSpan -> Maybe (String, Int, Int)
 getStartPos sp = case sp of
