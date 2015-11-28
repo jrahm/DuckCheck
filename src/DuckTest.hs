@@ -32,7 +32,6 @@ parsePython fp = do
         Left (StrError str) -> emitWarning ("ParseError: %s" ++ str) SpanEmpty >> return Nothing
         Right a -> return (Just a)
 
-
 runDuckTestM :: FilePath -> DuckTest SrcSpan ()
 runDuckTestM fp =
     (>>=) (parsePython fp) $

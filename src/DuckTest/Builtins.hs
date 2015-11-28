@@ -14,6 +14,7 @@ builtinGlobalFunctions =
         , Function "len" (FunctionType [fromList ["__len__"]] emptyType)
         , Function "str" (FunctionType [fromList ["__str__"]] (hclass_type strClass))
         , Function "open" (FunctionType [emptyType] emptyType)
+        , Function "int" (FunctionType [emptyType] emptyType)
     ]
 
 builtinGlobalClasses :: Map String HClass

@@ -28,9 +28,17 @@ preprocess =
                 Call (Dot ex1 (Ident (toDunderName op) pos) pos) [ArgExpr ex2 pos] pos
 
         proc ex@(Call (Var (Ident str _) _) [ArgExpr ex1 _] pos)
+            {- Change known calls to dunder attributes. -}
             = mapExpressions proc $
                 maybe' (Map.lookup str dunderFunctions) ex $ \dunder ->
                     Call (Dot ex1 (Ident dunder pos) pos) [] pos
+
+        {- Expand out literals into functions -}
+        proc ex@(Int _ _ pos)
+            = Call (Var (Ident "int" pos) pos) [ArgExpr ex pos] pos
+
+        proc ex@(Strings _ pos)
+            = Call (Var (Ident "str" pos) pos) [ArgExpr ex pos] pos
 
 
 
