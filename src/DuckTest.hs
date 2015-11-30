@@ -15,11 +15,12 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import DuckTest.MonadHelper
-import DuckTest.Insanity
+-- import DuckTest.Insanity
 import DuckTest.Checker
 import DuckTest.Flags
 import DuckTest.Monad
 import DuckTest.AST.Preprocess
+import DuckTest.Builtins
 
 parsePython :: FilePath -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))
 parsePython fp = do
@@ -39,7 +40,7 @@ runDuckTestM fp =
                 let stmts = preprocess stmts'
                 Trace %% intercalate "\n" (map prettyText stmts)
                 unless' (hasFlag PreprocessOnly) $
-                    runChecker detectInsanity Map.empty stmts
+                    runChecker_ initState stmts
 
 getStartPos :: SrcSpan -> Maybe (String, Int, Int)
 getStartPos sp = case sp of

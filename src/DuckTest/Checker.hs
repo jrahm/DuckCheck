@@ -1,34 +1,48 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {- Module with the checker and iterate functions -}
 
 module DuckTest.Checker where
 
 import DuckTest.Internal.Common
+import DuckTest.Internal.State
 
 import DuckTest.Monad
 import DuckTest.Infer.Functions
+import DuckTest.Infer.Expression
 import DuckTest.Infer.Classes
 import DuckTest.Types
+import DuckTest.MonadHelper
 
-iterateAST :: Statement a -> DuckTest a ()
-iterateAST stmt =
-    case stmt of
-        (Fun {fun_name=(Ident name _)}) -> do
-            typ@(FunctionType args ret) <- inferTypeForFunction stmt
-            Debug %% printf "Type for %s: %s" name (typeToString typ)
-            addFunction (Function name typ)
+import DuckTest.AST.Util
 
-        (Class {class_name=(Ident name _)}) -> do
-            (clsType, members) <- mkClass stmt
-            Debug %% printf "Class %s. Type: %s" name (show clsType)
-            addClass (HClass name clsType members)
+class CheckerState s where
+    {- The function used in a monadic fold across a list of
+     - statements -}
+    foldFunction :: s -> Statement e -> DuckTest e s
 
-        _ -> return ()
+runChecker :: (CheckerState s) => s -> [Statement e] -> DuckTest e s
+runChecker = foldM foldFunction
 
-type Checker m a = m -> [Statement a ] -> DuckTest a()
 
-runChecker ::  Checker m a -> m -> [Statement a] -> DuckTest a ()
-runChecker checker initmap stmts =
-    saveState $ do
-        mapM_ iterateAST stmts
-        checker initmap stmts
+runChecker_ :: (CheckerState s) => s -> [Statement e] -> DuckTest e ()
+runChecker_ a = void . runChecker a
 
+instance CheckerState InternalState where
+
+    foldFunction currentState statement = case statement of
+
+        (Fun {fun_name = (Ident name _), fun_body = body}) -> do
+            {- For functions, we infer the type and recursively check the
+             - function body for errors. -}
+             functionInferredType <- inferTypeForFunction currentState statement
+             let newstate = addVariableType name functionInferredType currentState
+             runChecker_ newstate body
+             return newstate
+
+        (Assign {assign_to=[Var (Ident vname _) _], assign_expr=ex}) -> do
+            inferredType <- inferTypeForExpression currentState ex
+            return $ addVariableType vname inferredType currentState
+
+        _ -> do
+             mapM_ (inferTypeForExpression currentState) (subExpressions statement)
+             return currentState

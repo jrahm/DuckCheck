@@ -270,6 +270,7 @@ instance HasExpression Argument where
 
 instance (HasExpressions e) => HasExpressions (ExprList e) where
     subExpressions (ExprList a) = concatMap subExpressions a
+    mapExpressionsM fn (ExprList l) = ExprList <$> mapM (mapExpressionsM fn) l
 
 
 instance HasIdentifier (Parameter a) where

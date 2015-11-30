@@ -22,13 +22,14 @@ import DuckTest.Monad
 import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
 import DuckTest.Types
+import DuckTest.Internal.State
 
 {- This function will take a Python function and infer the type
  - of this function. The type infered from this function is
  - of the type [args] -> return type. All the types are in a
  - structural format -}
-inferTypeForFunction :: Statement a -> DuckTest a FunctionType
-inferTypeForFunction (Fun (Ident name _) params _ body _) =
+inferTypeForFunction :: InternalState -> Statement a -> DuckTest a PyType
+inferTypeForFunction state (Fun (Ident name _) params _ body _) =
 
     {- Get a list of the names of the parameters to the function. For
      - each of those parameters, try to infer the type of each.
@@ -37,22 +38,22 @@ inferTypeForFunction (Fun (Ident name _) params _ body _) =
     let parameterIdentifiers :: [String]
         parameterIdentifiers = map (tryGetIdentifier "") params
 
-        returnType = emptyType -- cannot yet infer return type
+        returnType = anyType -- cannot yet infer return type
         in do
 
-        ret <- flip FunctionType returnType <$> mapM (`inferTypeForVariable`body) parameterIdentifiers
+        ret <- flip Functional returnType <$> mapM (flip (inferTypeForVariable state) body) parameterIdentifiers
         Info %% printf "(Inferred) %s :: %s" name (show ret)
         return ret
 
 
-inferTypeForFunction _ =
+inferTypeForFunction _ _ =
     {- This function was called on something not a function -}
     die "inferTypeForFunction called on non function!"
 
 {- Collects and infers the type of a variable name over
  - the span of the list of statements given. -}
-inferTypeForVariable :: forall e. String -> [Statement e] -> DuckTest e StructuralType
-inferTypeForVariable varname stmts =
+inferTypeForVariable :: forall e. InternalState -> String -> [Statement e] -> DuckTest e PyType
+inferTypeForVariable state varname stmts =
     {- This function, we walk through each expression in the
      - body of statements. In each expression, we look to see
      - how the parameter is being used. -}
@@ -63,12 +64,12 @@ inferTypeForVariable varname stmts =
         {- An observation of the pattern `x.y` we use this
          - to infer that the argument `x` must have an attribute
          - `y` -}
-        observeExpr :: Expr a -> DuckTest a StructuralType
+        observeExpr :: Expr a -> DuckTest a PyType
 
         observeExpr (Dot (Var (Ident name _) _) (Ident attname _) _)
                      | name == varname =
                         (Debug %% printf "Found attribute usage: %s" attname) >>
-                        return (singletonType attname)
+                        return (Scalar $ singletonType attname)
 
         {- An observation where we call a function with x as an argument.
          - We use this to retrieve more information about `x`. Specifically,
@@ -76,9 +77,8 @@ inferTypeForVariable varname stmts =
          -
          - This observation is of function(..., x, ...)-}
         observeExpr ex@(Call (Var (Ident fnname _) pos) args _) =
-             (>>=) (getFunction fnname) $
-                 maybe (iterateOverChildren ex) $
-                    \(Function _ (FunctionType paramsType _)) -> do
+                 maybe' (getFunctionType state fnname) (iterateOverChildren ex) $
+                    \(paramsType, _) -> do
 
                         when (length args > length paramsType) $
                             emitWarning ("Possible too many arguments for " ++ fnname) pos
@@ -117,5 +117,5 @@ inferTypeForVariable varname stmts =
 isDotChain :: String -> Expr a -> Bool
 isDotChain str expr = (not . null) (dotToList expr) && (head (dotToList expr) == str)
 
-liftOverDotChain :: [String] -> StructuralType -> StructuralType
+liftOverDotChain :: [String] -> PyType -> PyType
 liftOverDotChain lst st = foldr liftType st $ tail lst
