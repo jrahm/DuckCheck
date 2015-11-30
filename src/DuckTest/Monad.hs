@@ -68,7 +68,9 @@ runDuckTestIO flags ll fn =
                 Right s -> return s
 
 emitWarning :: String -> e -> DuckTest e ()
-emitWarning str e = lift (modify $ \hs -> hs {warnings = (str, e):warnings hs})
+emitWarning str e = do
+    Trace %% "Warning emitted: " ++ str
+    lift (modify $ \hs -> hs {warnings = (str, e):warnings hs})
 
 warn = emitWarning
 
@@ -101,6 +103,6 @@ warnTypeError pos (Incompatible t1 t2) =
     warn (printf "Incompatible types %s and %s" (show t1) (show t2)) pos
 
 warnTypeError pos (Difference name dif) =
-    warn (printf "Type %s missing attributes needed: %s" name (intercalate "," (Map.keys dif))) pos
+    warn (printf "Type %s missing attributes needed: %s" name (intercalate ", " (map (intercalate ".") dif))) pos
 
 infixl 1 %%

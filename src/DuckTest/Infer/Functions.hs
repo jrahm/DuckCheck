@@ -41,7 +41,9 @@ inferTypeForFunction state (Fun (Ident name _) params _ body _) =
         returnType = anyType -- cannot yet infer return type
         in do
 
-        ret <- flip Functional returnType <$> mapM (flip (inferTypeForVariable state) body) parameterIdentifiers
+        ret <- flip Functional returnType <$>
+                (zip parameterIdentifiers <$>
+                 mapM (flip (inferTypeForVariable state) body) parameterIdentifiers)
         Info %% printf "(Inferred) %s :: %s" name (show ret)
         return ret
 

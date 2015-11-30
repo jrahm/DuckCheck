@@ -36,7 +36,11 @@ instance CheckerState InternalState where
              - function body for errors. -}
              functionInferredType <- inferTypeForFunction currentState statement
              let newstate = addVariableType name functionInferredType currentState
-             runChecker_ newstate body
+             case functionInferredType of
+                (Functional args _) ->
+                    runChecker_ (addAll args newstate) body
+                _ ->
+                    Warn %% "This should not happen, infer type of function returned a type that isn't a function."
              return newstate
 
         (Assign {assign_to=[Var (Ident vname _) _], assign_expr=ex}) -> do

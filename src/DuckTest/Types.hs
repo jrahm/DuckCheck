@@ -6,11 +6,14 @@ import DuckTest.Internal.Common
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-data PyType = Scalar StructuralType | Functional [PyType] PyType | Any
+import Control.Monad.Writer.Lazy hiding (Any)
+
+data PyType = Scalar StructuralType | Functional [(String, PyType)] PyType | Any
 
 instance Show PyType where
     show (Scalar st) = show st
     show (Functional args ret) = "(" ++ intercalate "," (map show args) ++ ") -> " ++ show ret
+    show Any = "Any"
 
 instance Monoid PyType where
     mempty = Any
@@ -43,17 +46,20 @@ getAttribute (Scalar st) str = attributeType st str
 getAttribute _ _ = Nothing
 
 callType :: PyType -> Maybe ([PyType], PyType)
-callType (Functional a b) = Just (a, b)
+callType (Functional a b) = Just (map snd a, b)
 callType (Scalar st) =
     case attributeType st "__call__" of
-        Just (Functional a b) -> Just (a, b)
+        Just (Functional a b) -> Just (map snd a, b)
         _ -> Nothing
 
-data TypeError = Incompatible PyType PyType | Difference String (Map String PyType)
+data TypeError = Incompatible PyType PyType | Difference String [[String]]
 
 matchType :: PyType -> PyType -> Maybe TypeError
 matchType t1 t2 | isCompatibleWith t1 t2 = Nothing
-matchType (Scalar s1) (Scalar s2) = Just (Difference (getTypeName s1) $ typeDifference s2 s1)
+matchType t1@(Scalar s1) t2@(Scalar s2) =
+    case missingAttributes s2 s1 of
+        [] -> Nothing
+        l -> Just (Difference (prettyType t2) l)
 matchType t1 t2 = Just $ Incompatible t1 t2
 
 anyType :: PyType
@@ -104,7 +110,7 @@ isCompatibleWith :: PyType -> PyType -> Bool
 isCompatibleWith Any _ = True
 isCompatibleWith _ Any = True
 isCompatibleWith (Scalar t1) (Scalar t2) = isCompatibleWithStr t1 t2
-isCompatibleWith (Functional p1 r1) (Functional p2 r2) = and (zipWith isCompatibleWith p1 p2) && isCompatibleWith r1 r2
+isCompatibleWith (Functional p1 r1) (Functional p2 r2) = and (zipWith isCompatibleWith (map snd p1) (map snd p2)) && isCompatibleWith r1 r2
 isCompatibleWith _ _ = False
 
 isCompatibleWithStr :: StructuralType -> StructuralType -> Bool
@@ -118,6 +124,18 @@ isCompatibleWithStr (Attributes _ s1) (Attributes _ s2) | Map.null s1 = True
                                                                      - of the other two types is returned -}
                                                                     maybe' (Map.lookup member s1) False $ \typ2 ->
                                                                         isCompatibleWith typ1 typ2
+
+missingAttributes :: StructuralType -> StructuralType -> [[String]]
+missingAttributes (Attributes _ s1) (Attributes _ s2) | Map.null s1 = []
+                                                      | otherwise =
+                                                         execWriter $
+                                                            forM_ (Map.toList s2) $ \(member, typ1) ->
+                                                                maybe' (Map.lookup member s1) (tell [[member]]) $ \typ2 ->
+                                                                    case (typ1, typ2) of
+                                                                        (Scalar t1', Scalar t2') ->
+                                                                            tell (map (member:) $ missingAttributes t1' t2')
+                                                                        _ -> return ()
+
 
 instance Show StructuralType where
     show (Attributes name strs) =
@@ -150,3 +168,7 @@ liftType str st = Scalar $ Attributes Nothing $ Map.singleton str st
 
 typeFromDotList :: [String] -> PyType
 typeFromDotList = foldr liftType anyType
+
+prettyType :: PyType -> String
+prettyType (Scalar (Attributes (Just name) _)) = name
+prettyType t = show t
