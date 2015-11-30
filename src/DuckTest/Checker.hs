@@ -53,6 +53,15 @@ instance CheckerState InternalState where
             inferredType <- inferTypeForExpression currentState ex
             return $ addVariableType vname inferredType currentState
 
+        (Conditional {cond_guards=guards, cond_else=elsebody}) -> do
+            endStates <- forM guards $ \(expr, stmts) -> do
+                          _ <- inferTypeForExpression currentState expr
+                          runChecker currentState stmts
+
+            elseState <- runChecker currentState elsebody
+            let intersect = foldl intersectStates elseState endStates
+            return intersect
+
         _ -> do
              mapM_ (inferTypeForExpression currentState) (subExpressions statement)
              return currentState
