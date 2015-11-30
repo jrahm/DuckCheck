@@ -78,7 +78,6 @@ getTypeName :: StructuralType -> String
 getTypeName (Attributes Nothing _) = "?"
 getTypeName (Attributes (Just s) _) = s
 
-
 fromSet :: Set String -> StructuralType
 fromSet = Attributes Nothing . Map.fromList . map (,anyType) . Set.toList
 
@@ -91,14 +90,17 @@ toMap (Attributes _ s) = s
 emptyType :: StructuralType
 emptyType = Attributes Nothing Map.empty
 
-singletonType :: String -> StructuralType
-singletonType = Attributes Nothing . flip Map.singleton anyType
+singletonType :: String -> PyType -> StructuralType
+singletonType str typ = Attributes Nothing $ Map.singleton str typ
 
 attributeType :: StructuralType -> String -> Maybe PyType
 attributeType (Attributes _ m) s = Map.lookup s m
 
 addAttribute :: String -> PyType -> StructuralType -> StructuralType
 addAttribute attr typ (Attributes n m) = Attributes n $ Map.insert attr typ m
+
+addAllAttributes :: [(String, PyType)] -> StructuralType
+addAllAttributes = mconcatMap (uncurry singletonType)
 
 unionType :: StructuralType -> StructuralType -> StructuralType
 unionType (Attributes n m1) (Attributes _ m2) = Attributes n (Map.unionWith mappend m1 m2)
@@ -170,5 +172,38 @@ typeFromDotList :: [String] -> PyType
 typeFromDotList = foldr liftType anyType
 
 prettyType :: PyType -> String
-prettyType (Scalar (Attributes (Just name) _)) = name
-prettyType t = show t
+prettyType typ = execWriter $ prettyType' 0 typ
+    where
+          prettyType' _ (Scalar (Attributes (Just name) _)) = tell name
+          prettyType' indent (Scalar (Attributes Nothing attrs)) = do
+                tell "{ "
+                let lst = Map.toList attrs
+                unless (null lst) $  do
+                    let ((attr, typ):t) = lst
+                    let attrplus = attr ++ " :: "
+                    tell attrplus
+                    prettyType' (indent + length attrplus + 2) typ
+                    forM_ t $ \(attr, typ) -> do
+                        tell "\n"
+                        tab indent
+                        let attrplus = ", " ++ attr ++ " :: "
+                        tell attrplus
+                        prettyType' (indent + length attrplus) typ
+                tell "} "
+
+          prettyType' indent (Functional args ret) = do
+             tell "( "
+             unless (null args) $ do
+                 let ((_, h):t) = args
+                 prettyType' (indent + 2) h
+                 forM_ t $ \(_, typ) -> do
+                     tell "\n, "
+                     prettyType' (indent + 2) typ
+                 tell ")"
+             tell " -> "
+             prettyType' (indent + 4) ret
+
+          prettyType' _ Any = tell "Any"
+
+          tab :: Int -> Writer String ()
+          tab indent = forM_ [1..indent] $ const $ tell " "

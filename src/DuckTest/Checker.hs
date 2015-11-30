@@ -43,6 +43,12 @@ instance CheckerState InternalState where
                     Warn %% "This should not happen, infer type of function returned a type that isn't a function."
              return newstate
 
+        (Class {class_name = (Ident name _), class_body = body}) -> do
+            classFunctionalType <- inferTypeForClass currentState statement
+            Debug %% printf "\nClass added and has type ::\n%s\n " (prettyType classFunctionalType)
+            let newstate = addVariableType name classFunctionalType currentState
+            return newstate
+
         (Assign {assign_to=[Var (Ident vname _) _], assign_expr=ex}) -> do
             inferredType <- inferTypeForExpression currentState ex
             return $ addVariableType vname inferredType currentState

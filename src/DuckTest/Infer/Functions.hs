@@ -44,7 +44,7 @@ inferTypeForFunction state (Fun (Ident name _) params _ body _) =
         ret <- flip Functional returnType <$>
                 (zip parameterIdentifiers <$>
                  mapM (flip (inferTypeForVariable state) body) parameterIdentifiers)
-        Info %% printf "(Inferred) %s :: %s" name (show ret)
+        Info %% printf "\n(Inferred) %s ::\n%s\n " name (prettyType ret)
         return ret
 
 
@@ -71,7 +71,7 @@ inferTypeForVariable state varname stmts =
         observeExpr (Dot (Var (Ident name _) _) (Ident attname _) _)
                      | name == varname =
                         (Debug %% printf "Found attribute usage: %s" attname) >>
-                        return (Scalar $ singletonType attname)
+                        return (Scalar $ singletonType attname anyType)
 
         {- An observation where we call a function with x as an argument.
          - We use this to retrieve more information about `x`. Specifically,
