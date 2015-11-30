@@ -5,15 +5,37 @@ import DuckTest.Internal.Common
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import Debug.Trace
 
 import Control.Monad.Writer.Lazy hiding (Any)
 
-data PyType = Scalar StructuralType | Functional [(String, PyType)] PyType | Any
+{-
+ - This is a data type representing an inferred type in Python. THere
+ - are a few different constructers. The first is a Scalar. This simply
+ - has a structural type (i.e. essentially a mapping of attributes to types,
+ - recursively). Second, we have the functional type, this has a list of
+ - arguments and their types to the return type of the function, recursively.
+ - Next, there is the Any type, this type will typecheck with anything. It
+ - is how the inference engine can deal with errors without them cascading.
+ - Finally, the Any type is considered a 'reference'. It used to refer
+ - to a type recursively by name so as to not cause the checking functions
+ - to recurse forever.
+ -
+ - For the alpha type - consider a linked list. This may have type
+ - Scalar $ StructuralType "LinkedList"
+ -  {data :: any, next :: {data :: any, next :: {data :: any, next :: {...}}}}
+ - on and on forever. So to counter this, we use the alpha type to make this
+ - Scalar $ StructuralType "LinkedList" {data :: any, next :: Alpha "LinkedList" _}
+ - The structure in the data is actually infinitely recursive, but thanks to haskell's
+ - laziness, we don't have to worry about this.
+ -}
+data PyType = Scalar StructuralType | Functional [(String, PyType)] PyType | Any | Alpha String PyType
 
 instance Show PyType where
     show (Scalar st) = show st
     show (Functional args ret) = "(" ++ intercalate "," (map show args) ++ ") -> " ++ show ret
     show Any = "Any"
+    show (Alpha name _) = "alpha " ++ name
 
 instance Monoid PyType where
     mempty = Any
@@ -27,6 +49,7 @@ instance Monoid PyType where
     mappend (Functional p1 r1) (Functional p2 r2) = Functional (zipWith mappend p1 p2) (mappend r1 r2)
     mappend ty@(Functional {}) st = mappend st ty
     mappend (Scalar s1) (Scalar s2) = Scalar (s1 `mappend` s2)
+    mappend (Alpha _ s1) s2 = s2 `mappend` s1
 
 data StructuralType = Attributes {
       type_name :: Maybe String
@@ -41,8 +64,13 @@ instance Monoid StructuralType where
 
     mempty = emptyType
 
+mkAlpha :: PyType -> PyType
+mkAlpha s@(Scalar (Attributes name _)) = Alpha (fromMaybe "" name) s
+mkAlpha s = Alpha "" s
+
 getAttribute :: PyType -> String -> Maybe PyType
 getAttribute (Scalar st) str = attributeType st str
+getAttribute (Alpha _ st) str = getAttribute st str
 getAttribute _ _ = Nothing
 
 callType :: PyType -> Maybe ([PyType], PyType)
@@ -113,6 +141,8 @@ isCompatibleWith Any _ = True
 isCompatibleWith _ Any = True
 isCompatibleWith (Scalar t1) (Scalar t2) = isCompatibleWithStr t1 t2
 isCompatibleWith (Functional p1 r1) (Functional p2 r2) = and (zipWith isCompatibleWith (map snd p1) (map snd p2)) && isCompatibleWith r1 r2
+isCompatibleWith (Alpha s1 _) (Alpha s2 _) = s1 == s2
+isCompatibleWith (Alpha _ s1) s2 = isCompatibleWith s1 s2
 isCompatibleWith _ _ = False
 
 isCompatibleWithStr :: StructuralType -> StructuralType -> Bool
@@ -174,7 +204,7 @@ typeFromDotList = foldr liftType anyType
 prettyType :: PyType -> String
 prettyType typ = execWriter $ prettyType' 0 typ
     where
-          prettyType' _ (Scalar (Attributes (Just name) _)) = tell name
+          prettyType' indent (Scalar (Attributes (Just name) s)) = tell name >> tell " " >> prettyType' indent (Scalar (Attributes Nothing s))
           prettyType' indent (Scalar (Attributes Nothing attrs)) = do
                 tell "{ "
                 let lst = Map.toList attrs
@@ -201,9 +231,10 @@ prettyType typ = execWriter $ prettyType' 0 typ
                      prettyType' (indent + 2) typ
                  tell ")"
              tell " -> "
-             prettyType' (indent + 4) ret
+             prettyType' (indent + 1) ret
 
           prettyType' _ Any = tell "Any"
+          prettyType' _ (Alpha nam _) = tell $ "alpha " ++ nam
 
           tab :: Int -> Writer String ()
           tab indent = forM_ [1..indent] $ const $ tell " "

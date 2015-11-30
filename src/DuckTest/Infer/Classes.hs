@@ -18,14 +18,15 @@ import Control.Arrow
 inferTypeForClass :: InternalState -> Statement a -> DuckTest a PyType
 inferTypeForClass st cls@(Class {class_body = body, class_name = (Ident clname _)})
     = do
-        (functions, selfAssignments) <- mconcatMapM (walkFunctions st) body
+        maybeInitType <- mapM (inferTypeForFunction st) (findInit body)
+
+        let (Functional args _) = fixForSelf $ fromMaybe (Functional [] Any) maybeInitType
+        let newst = addVariableType clname (Functional args $ Alpha clname Any) st
+
+        (functions, selfAssignments) <- mconcatMapM (walkFunctions newst) body
         let topFunctions = addAllAttributes $ map (second fixForSelf) functions
 
-        let retType = Scalar $ setTypeName clname $ mappend topFunctions selfAssignments
-
-
-        maybeInitType <- mapM (inferTypeForFunction st) (findInit body)
-        let (Functional args _) = fixForSelf $ fromMaybe (Functional [] retType) maybeInitType
+        let retType = Scalar $ setTypeName clname $ rewireAlphas retType $ mappend topFunctions selfAssignments
 
         return $ Functional args retType
 
@@ -37,6 +38,12 @@ inferTypeForClass st cls@(Class {class_body = body, class_name = (Ident clname _
                     selfAssignments <- mconcatMapM (findSelfAssign newstate) (walkStatements ex)
                     return ([(name, fnType)], selfAssignments)
               walkFunctions _ _ = return ([], emptyType)
+
+              rewireAlphas :: PyType -> StructuralType -> StructuralType
+              rewireAlphas typ (Attributes str m) = Attributes str $ flip Map.map m $
+                                                          \t -> case t of
+                                                            Alpha name _ | name == clname -> Alpha name typ
+                                                            _ -> t
 
 
               functionType state ex@(Fun {fun_name=(Ident name _)}) = Just . (,) name <$> inferTypeForFunction state ex
