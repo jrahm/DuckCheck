@@ -5,6 +5,7 @@ import DuckTest.Internal.Common
 import DuckTest.Internal.State
 import DuckTest.Monad
 import DuckTest.MonadHelper
+import DuckTest.Internal.Format
 
 inferTypeForExpression :: InternalState -> Expr e -> DuckTest e PyType
 inferTypeForExpression state expr = do
@@ -12,7 +13,7 @@ inferTypeForExpression state expr = do
 
       (Var (Ident name pos) _) ->
           maybe' (getVariableType state name)
-              (warn (printf "The identifier %s may not be defined" name) pos >> return anyType)
+              (warn pos (duckf "The identifier " name " may not be defined") >> return anyType)
               return
 
       (Call callexpr args pos) -> do
@@ -28,7 +29,7 @@ inferTypeForExpression state expr = do
               Any -> return Any
               _ -> case getAttribute exprType att of
                       Nothing -> do
-                          warn (printf "The expression %s may have no attribute %s\n    %s :: %s" (prettyText expr) att (prettyText expr) (prettyType exprType)) pos
+                          warn pos $ duckf "The expression " expr " may have no attribute " att "\n    " expr " :: " exprType
                           return Any
                       Just t -> return t
 
@@ -43,8 +44,7 @@ checkCallExpression st lhs args pos = do
     case lhsType of
         Any -> return () -- maybe adda paranoid warning here
         _ -> case callType lhsType of
-                Nothing -> warn (printf "The expression %s does not appear to be callable"
-                                    (prettyText lhs)) pos
+                Nothing -> warn pos $ duckf "The expression " lhs " does not appear to be callable"
                 Just (argTypes, _) ->
                     zipWithM_ (tryMatchExprType st pos) argTypes args
     return lhsType

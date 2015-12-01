@@ -1,10 +1,12 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                    die, fromEither, hissLiftIO, runDuckTestIO, StructuralType(..),
                    emptyType, singletonType, unionType,
                     Function(..), HClass(..), emitWarning,
                    typeHasAttr, fromSet, typeToString, getWarnings,
-                   isCompatibleWith, setTypeName, warn, warnTypeError, findImport, makeImport,
-                   getTypeName, typeDifference, saveState, LogLevel(..), (%%)
+                   isCompatibleWith, setTypeName, warn, findImport, makeImport,
+                   getTypeName, typeDifference, saveState, LogLevel(..), (%%), getLogLevel
                    ) where
 
 import System.FilePath
@@ -28,6 +30,7 @@ import System.Exit (exitWith, ExitCode(ExitFailure))
 import DuckTest.Types
 
 
+
 data DuckTestState e = DuckTestState {
       flags :: Set Flag    -- command line flags
     , log_level :: LogLevel
@@ -41,6 +44,9 @@ data DuckTestState e = DuckTestState {
 }
 
 type DuckTest e = EitherT String (StateT (DuckTestState e) IO)
+
+getLogLevel :: DuckTest e LogLevel
+getLogLevel = lift (log_level <$> get)
 
 getFirst :: (Monad m) => [a] -> (a -> m Bool) -> m (Maybe a)
 getFirst (a:xs) f = do
@@ -96,7 +102,8 @@ emitWarning str e = do
     Trace %% "Warning emitted: " ++ str
     lift (modify $ \hs -> hs {warnings = (str, e):warnings hs})
 
-warn = emitWarning
+warn :: e -> (DuckTest e String) -> DuckTest e ()
+warn pos mstr = mstr >>= (\str -> emitWarning str pos)
 
 hlog :: String -> DuckTest e ()
 hlog str = lift $ lift $ putStrLn str
@@ -122,13 +129,6 @@ fromEither e = case e of
 die :: String -> DuckTest e a
 die = left
 
-warnTypeError :: e -> TypeError -> DuckTest e ()
-warnTypeError pos (Incompatible t1 t2) =
-    warn (printf "Incompatible types %s and %s" (show t1) (show t2)) pos
-
-warnTypeError pos (Difference name dif) =
-    warn (printf "Type %s missing attributes needed: %s" name (intercalate ", " (map (intercalate ".") dif))) pos
-
 makeImport :: SrcSpan ->
               [String] ->
               (FilePath  -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))) ->
@@ -142,7 +142,7 @@ makeImport importPosition dottedlist parser checker = do
             return (Just typ)
         Nothing -> do
             importFile <- findImport dottedlist
-            maybe' importFile (warn ("Unable to resolve import %s" ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
+            maybe' importFile (emitWarning ("Unable to resolve import %s" ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
                 (>>=) (parser filePath) $ mapM $
                     \(Module stmts', _) -> do
                         let stmts = preprocess stmts'

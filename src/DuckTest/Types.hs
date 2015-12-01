@@ -80,14 +80,14 @@ callType (Scalar st) =
         Just (Functional a b) -> Just (map snd a, b)
         _ -> Nothing
 
-data TypeError = Incompatible PyType PyType | Difference String [[String]]
+data TypeError = Incompatible PyType PyType | Difference PyType [[String]]
 
 matchType :: PyType -> PyType -> Maybe TypeError
 matchType t1 t2 | isCompatibleWith t1 t2 = Nothing
 matchType t1@(Scalar s1) t2@(Scalar s2) =
     case missingAttributes s2 s1 of
         [] -> Nothing
-        l -> Just (Difference (prettyType t2) l)
+        l -> Just (Difference t2 l)
 matchType t1 t2 = Just $ Incompatible t1 t2
 
 anyType :: PyType
@@ -205,9 +205,12 @@ typeFromDotList :: [String] -> PyType
 typeFromDotList = foldr liftType anyType
 
 prettyType :: PyType -> String
-prettyType typ = execWriter $ prettyType' 0 typ
+prettyType = prettyType' False
+
+prettyType' :: Bool -> PyType -> String
+prettyType' descend typ = execWriter $ prettyType' 0 typ
     where
-          prettyType' indent (Scalar (Attributes (Just name) s)) = tell name >> tell " " >> prettyType' indent (Scalar (Attributes Nothing s))
+          prettyType' indent (Scalar (Attributes (Just name) s)) = tell name >> when descend (tell " " >> prettyType' indent (Scalar (Attributes Nothing s)))
           prettyType' indent (Scalar (Attributes Nothing attrs)) = do
                 tell "{ "
                 let lst = Map.toList attrs

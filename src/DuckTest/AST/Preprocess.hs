@@ -21,6 +21,11 @@ preprocess :: [Statement e] -> [Statement e]
 preprocess =
     map (mapExpressions proc)
     where
+        proc (BinaryOp op@(In _) ex1 ex2 pos) =
+            {- The in operator is backwards -}
+            mapExpressions proc $
+                Call (Dot ex2 (Ident (toDunderName op) pos) pos) [ArgExpr ex1 pos] pos
+
         proc (BinaryOp op ex1 ex2 pos) =
             {- Convert all binary operators to their actual function calls
              - to make things easier -}
