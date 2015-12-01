@@ -35,9 +35,14 @@ instance CheckerState InternalState where
 
     foldFunction currentState statement = case statement of
 
-        (Import [ImportItem dotted as pos] _) -> do
-            let dottedpaths = map (\(Ident name _) -> name) dotted
-            makeImport pos dottedpaths currentState
+        (Import [ImportItem dotted@(_:_) as pos] _) -> do
+            let dottedpaths@(h:t) = map (\(Ident name _) -> name) dotted
+
+            modType <- makeImport pos dottedpaths parsePython $ \stmts ->
+                stateToType <$> runChecker initState stmts
+
+            maybe' modType (return currentState) $ \a ->
+                return $ addVariableType h (liftFromDotList t a) currentState
 
 
         (Fun {fun_name = (Ident name _), fun_body = body}) -> do
@@ -74,30 +79,3 @@ instance CheckerState InternalState where
         _ -> do
              mapM_ (inferTypeForExpression currentState) (subExpressions statement)
              return currentState
-makeImport :: SrcSpan -> [String] -> InternalState -> DuckTest SrcSpan InternalState
-makeImport pos [] r = warn "Empty import" pos >> return r
-makeImport pos key arg@(InternalState (vars, imports)) =
-    case Map.lookup key imports of
-        Just typ -> do
-            Trace %% "Using cached import for " ++ show key
-            return $ addVariableType (head key) (liftFromDotList (tail key) typ) arg
-
-        Nothing -> do
-            importFile <- findImport key
-            case importFile of
-                Nothing -> do
-                    warn (printf "Unable to resolve import %s" (intercalate "." key)) pos
-                    return arg
-
-                Just fp -> do
-                   st <-  (>>=) (parsePython fp) $ mapM $
-                            \(Module stmts', _) -> do
-                                state <- runChecker (addImport key Any $ combineImports arg initState) stmts'
-                                let importtyp = stateToType state
-                                let vartyp = liftFromDotList (tail key) importtyp
-                                Trace %% "Add import " ++ show key ++ " :: " ++ prettyType importtyp
-                                return $
-                                    combineImports state $
-                                    addVariableType (head key) vartyp $
-                                    addImport key importtyp arg
-                   return $ fromMaybe arg st

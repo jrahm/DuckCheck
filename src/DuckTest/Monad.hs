@@ -3,13 +3,14 @@ module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                    emptyType, singletonType, unionType,
                     Function(..), HClass(..), emitWarning,
                    typeHasAttr, fromSet, typeToString, getWarnings,
-                   isCompatibleWith, setTypeName, warn, warnTypeError, findImport,
+                   isCompatibleWith, setTypeName, warn, warnTypeError, findImport, makeImport,
                    getTypeName, typeDifference, saveState, LogLevel(..), (%%)
                    ) where
 
 import System.FilePath
 import System.Directory
 import DuckTest.Internal.Common
+import DuckTest.AST.Preprocess
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State.Lazy
@@ -34,6 +35,9 @@ data DuckTestState e = DuckTestState {
     {- Warning collection list. For printing them out
      - at the end -}
     , warnings :: [(String, e)]
+
+    {- List of imported modules. -}
+    , imports  :: Map [String] PyType
 }
 
 type DuckTest e = EitherT String (StateT (DuckTestState e) IO)
@@ -72,7 +76,7 @@ hissLiftIO :: IO a -> DuckTest e a
 hissLiftIO = lift . lift
 
 emptyDuckTestState :: Set Flag -> LogLevel -> DuckTestState e
-emptyDuckTestState flags ll = DuckTestState flags ll []
+emptyDuckTestState flags ll = DuckTestState flags ll mempty mempty
 
 runDuckTest :: Set Flag -> LogLevel -> DuckTest e a -> IO (Either String a)
 runDuckTest flags ll fn = evalStateT (runEitherT fn) (emptyDuckTestState flags ll)
@@ -125,4 +129,31 @@ warnTypeError pos (Incompatible t1 t2) =
 warnTypeError pos (Difference name dif) =
     warn (printf "Type %s missing attributes needed: %s" name (intercalate ", " (map (intercalate ".") dif))) pos
 
+makeImport :: SrcSpan ->
+              [String] ->
+              (FilePath  -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))) ->
+              ([Statement SrcSpan] -> DuckTest SrcSpan PyType) -> DuckTest SrcSpan (Maybe PyType)
+makeImport importPosition dottedlist parser checker = do
+    Debug %% printf "Make import %s" (show dottedlist)
+    maybePyType <- Map.lookup dottedlist <$> (imports <$> lift get)
+    case maybePyType of
+        Just typ -> do
+            Debug %% printf "Use cached"
+            return (Just typ)
+        Nothing -> do
+            importFile <- findImport dottedlist
+            maybe' importFile (warn ("Unable to resolve import %s" ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
+                (>>=) (parser filePath) $ mapM $
+                    \(Module stmts', _) -> do
+                        let stmts = preprocess stmts'
+
+                        lift $ modify $ \state ->
+                            state {imports = Map.insert dottedlist Any (imports state)}
+
+                        modType <- checker stmts
+
+                        lift $ modify $ \state ->
+                            state {imports = Map.insert dottedlist modType (imports state)}
+
+                        return modType
 infixl 1 %%
