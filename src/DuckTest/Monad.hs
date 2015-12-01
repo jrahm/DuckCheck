@@ -3,10 +3,12 @@ module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                    emptyType, singletonType, unionType,
                     Function(..), HClass(..), emitWarning,
                    typeHasAttr, fromSet, typeToString, getWarnings,
-                   isCompatibleWith, setTypeName, warn, warnTypeError,
+                   isCompatibleWith, setTypeName, warn, warnTypeError, findImport,
                    getTypeName, typeDifference, saveState, LogLevel(..), (%%)
                    ) where
 
+import System.FilePath
+import System.Directory
 import DuckTest.Internal.Common
 
 import Control.Monad.IO.Class
@@ -35,6 +37,24 @@ data DuckTestState e = DuckTestState {
 }
 
 type DuckTest e = EitherT String (StateT (DuckTestState e) IO)
+
+getFirst :: (Monad m) => [a] -> (a -> m Bool) -> m (Maybe a)
+getFirst (a:xs) f = do
+    bool <- f a
+    if bool then return (Just a)
+        else getFirst xs f
+getFirst [] _ = return Nothing
+
+findImport :: [String] -> DuckTest e (Maybe FilePath)
+findImport dotted = do
+    let relativePath = intercalate "/" dotted
+    let sitepath = ["", "/usr/lib/python3.5"]
+
+    let possible = map ((++".py") . (</>relativePath)) sitepath
+
+    getFirst possible $ \path -> do
+       Trace %% "Try import file: " ++ path
+       hissLiftIO $ doesFileExist path
 
 saveState :: DuckTest e a -> DuckTest e a
 saveState fn = do

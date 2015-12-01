@@ -198,6 +198,9 @@ data HClass = HClass {
 liftType :: String -> PyType -> PyType
 liftType str st = Scalar $ Attributes Nothing $ Map.singleton str st
 
+liftFromDotList :: [String] -> PyType -> PyType
+liftFromDotList list init = foldr liftType init list
+
 typeFromDotList :: [String] -> PyType
 typeFromDotList = foldr liftType anyType
 
