@@ -17,7 +17,7 @@ toDunderName op = case op of
     GreaterThanEquals _ -> "__gte__"
     LessThanEquals _ -> "__gte__"
     NotEquals _ -> "__ne__"
-    In _ -> "__contians__"
+    In _ -> "__contains__"
     Is _ -> "is"
     IsNot _ -> "is_not"
     NotIn _ -> "__contains__"
