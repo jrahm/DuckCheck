@@ -70,7 +70,7 @@ inferTypeForVariable state varname stmts =
                      | name == varname =
                         {- TODO infer the expression -}
                         (Debug %% printf "Found attribute usage: %s" attname) >>
-                        return (singleton attname Any)
+                        return (singleton attname Void)
 
         {- An observation where we call a function with x as an argument.
          - We use this to retrieve more information about `x`. Specifically,

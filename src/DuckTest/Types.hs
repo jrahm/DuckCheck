@@ -85,20 +85,25 @@ intersection t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
 intersection (Alpha _ s1) t2 = intersection s1 t2
 intersection t1 (Alpha _ s1) = intersection t1 s1
 
-difference :: PyType -> PyType -> PyType
-difference Any _ = Any
-difference _ Any = Void
-difference t Void = t
-difference Void _ = Void
-difference (Scalar _ m1) (Scalar _ m2) = toVoid $ Scalar Nothing $ Map.differenceWith
-             (\a b -> let x = difference a b in if isVoid x then Nothing else Just x)
-                m1 m2
-difference sc@(Scalar {}) f@(Functional {}) = difference sc (singleton "__call__" f)
-difference f@(Functional {}) t = difference t f
-difference t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
-difference t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
-difference (Alpha _ s1) t2 = difference s1 t2
-difference t1 (Alpha _ s1) = difference t1 s1
+difference x y = let dif = difference' x y in trace (prettyType' True x ++ " - " ++ prettyType' True y ++ " = " ++ prettyType' True dif) dif
+
+difference' :: PyType -> PyType -> PyType
+difference' Any Any = Void
+difference' Any _ = Any
+difference' _ Any = Void
+difference' t Void = t
+difference' Void _ = Void
+difference' (Scalar _ m1) (Scalar _ m2) =
+    toVoid $ Scalar Nothing $ Map.differenceWith fn m1 m2
+    where
+        fn t1 t2 = if isVoid (difference t1 t2) then
+                    Nothing else Just (difference t1 t2)
+difference' sc@(Scalar {}) f@(Functional {}) = difference sc (singleton "__call__" f)
+difference' f@(Functional {}) t = difference t f
+difference' t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
+difference' t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
+difference' (Alpha _ s1) t2 = difference s1 t2
+difference' t1 (Alpha _ s1) = difference t1 s1
 
 hasSameName :: PyType -> PyType -> Bool
 hasSameName (Alpha s1 _) (Alpha s2 _) | s1 == s2 = True

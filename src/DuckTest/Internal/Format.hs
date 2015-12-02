@@ -60,7 +60,7 @@ warnTypeError pos (Difference t1 t2 dif) =
         attrsNeeded <-
                 forM (Map.toList dif) $ \(key, typ) ->
                     duckf key " :: " typ :: DuckTest e String
-        duckf "'" Green t1 Reset "' incompatible as '" Green t2 Reset "'. Missing attributes needed: '" Green (intercalate ", " attrsNeeded) Reset "'"
+        duckf "'" Green t2 Reset "' incompatible as '" Green t1 Reset "'. Missing attributes needed: '" Green (intercalate ", " attrsNeeded) Reset "'"
 
 data Ansi = Green | Red | Yellow | Blue | Reset | Bold
 
