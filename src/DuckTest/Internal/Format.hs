@@ -13,6 +13,9 @@ import Debug.Trace
 class DuckShowable a where
     duckShow :: LogLevel -> a -> String
 
+instance DuckShowable (LogLevel -> String) where
+    duckShow ll f = f ll
+
 class DIsChar ch where
     charToString :: [ch] -> String
     fromStringToChar :: String -> [ch]
@@ -57,9 +60,8 @@ warnTypeError pos (Difference name dif) =
 
 instance (DuckShowable PyType) where
     duckShow ll (Scalar (Attributes (Just name) s)) | ll > Trace = name
-    duckShow ll (Scalar (Attributes Nothing s)) | ll > Trace = concat $ Map.keys s
-    duckShow ll (Functional args ret) | ll > Trace = "(" ++ intercalate "," (map (duckShow ll) args) ++ ") -> " ++ duckShow ll ret
+    duckShow ll (Scalar (Attributes Nothing s)) | ll > Trace = "{ " ++ (intercalate ", " $ Map.keys s) ++ " }"
+    duckShow ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (duckShow ll) args) ++ ") -> " ++ duckShow ll ret
     duckShow ll (Alpha n _) | ll > Trace = n
     duckShow Debug t = prettyType' False t
     duckShow Trace t = prettyType' True t
-

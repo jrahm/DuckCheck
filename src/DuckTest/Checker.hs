@@ -6,6 +6,7 @@ module DuckTest.Checker where
 import qualified Data.Map as Map
 import DuckTest.Internal.Common
 import DuckTest.Internal.State
+import DuckTest.Internal.Format
 
 import DuckTest.Monad
 import DuckTest.Infer.Functions
@@ -41,8 +42,13 @@ instance CheckerState InternalState where
             modType <- makeImport pos dottedpaths parsePython $ \stmts ->
                 stateToType <$> runChecker initState stmts
 
-            maybe' modType (return currentState) $ \a ->
-                return $ addVariableType h (liftFromDotList t a) currentState
+            maybe' modType (return currentState) $ \a -> do
+                Debug %%! duckf "Module " h " :: " a
+                case as of
+                    Nothing ->
+                        return $ addVariableType h (liftFromDotList t a) currentState
+                    Just (Ident name _) ->
+                        return $ addVariableType name a currentState
 
 
         (Fun {fun_name = (Ident name _), fun_body = body}) -> do

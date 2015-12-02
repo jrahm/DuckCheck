@@ -6,7 +6,8 @@ module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                     Function(..), HClass(..), emitWarning,
                    typeHasAttr, fromSet, typeToString, getWarnings,
                    isCompatibleWith, setTypeName, warn, findImport, makeImport,
-                   getTypeName, typeDifference, saveState, LogLevel(..), (%%), getLogLevel
+                   getTypeName, typeDifference, saveState, LogLevel(..), (%%), getLogLevel,
+                   (%%!)
                    ) where
 
 import System.FilePath
@@ -28,7 +29,7 @@ import System.IO
 import System.Exit (exitWith, ExitCode(ExitFailure))
 
 import DuckTest.Types
-
+import DuckTest.Builtins
 
 
 data DuckTestState e = DuckTestState {
@@ -82,7 +83,8 @@ hissLiftIO :: IO a -> DuckTest e a
 hissLiftIO = lift . lift
 
 emptyDuckTestState :: Set Flag -> LogLevel -> DuckTestState e
-emptyDuckTestState flags ll = DuckTestState flags ll mempty mempty
+emptyDuckTestState flags ll = DuckTestState flags ll mempty $
+    Map.singleton ["sys"] sysType
 
 runDuckTest :: Set Flag -> LogLevel -> DuckTest e a -> IO (Either String a)
 runDuckTest flags ll fn = evalStateT (runEitherT fn) (emptyDuckTestState flags ll)
@@ -115,6 +117,9 @@ hlog str = lift $ lift $ putStrLn str
         forM_ (lines str) $ \line ->
             hlog $ printf "[%s] - %s" (show ll) line
 
+(%%!) :: LogLevel -> DuckTest e String -> DuckTest e ()
+(%%!) ll str = str >>= (%%) ll
+
 hasFlag :: Flag -> DuckTest e Bool
 hasFlag f = (f `elem`) . flags <$> lift get
 
@@ -142,7 +147,7 @@ makeImport importPosition dottedlist parser checker = do
             return (Just typ)
         Nothing -> do
             importFile <- findImport dottedlist
-            maybe' importFile (emitWarning ("Unable to resolve import %s" ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
+            maybe' importFile (emitWarning ("Unable to resolve import " ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
                 (>>=) (parser filePath) $ mapM $
                     \(Module stmts', _) -> do
                         let stmts = preprocess stmts'

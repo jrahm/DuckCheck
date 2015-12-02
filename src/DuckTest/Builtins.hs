@@ -9,7 +9,8 @@ initState =
     addVariableType "print" (Functional [("", anyType)] anyType) $
     addVariableType "len" (Functional [("", Scalar $ fromList ["__len__"])] anyType) $
     addVariableType "str" (Functional [("", Scalar $ fromList ["__str__"])] strType) $
-    addVariableType "int" (Functional [("", anyType)] intType)
+    addVariableType "int" (Functional [("", anyType)] intType) $
+    addVariableType "set" (Functional [] setType)
     emptyState
 --
 -- builtinGlobalFunctions :: Map String Function
@@ -32,11 +33,35 @@ initState =
 -- strClass :: HClass
 -- strClass = HClass "str" (fromList stringAttrs) Map.empty
 
+sysType :: PyType
+sysType = Scalar $ addAllAttributes sysAttrs
+
 strType :: PyType
 strType = Scalar $ setTypeName "str" $ addAllAttributes stringAttrs
 
 intType :: PyType
 intType = Scalar $ setTypeName "int" $ addAllAttributes intAttrs
+
+setType :: PyType
+setType = Scalar $ setTypeName "set" $ addAllAttributes setAttrs
+
+setAttrs :: [(String, PyType)]
+setAttrs =
+    map (,anyType)
+        ["__and__", "__class__", "__contains__", "__delattr__",
+        "__dir__", "__doc__", "__eq__", "__format__",
+        "__ge__", "__getattribute__", "__gt__", "__hash__",
+        "__iand__", "__init__", "__ior__", "__isub__",
+        "__iter__", "__ixor__", "__le__", "__len__",
+        "__lt__", "__ne__", "__new__", "__or__",
+        "__rand__", "__reduce__", "__reduce_ex__", "__repr__",
+        "__ror__", "__rsub__", "__rxor__", "__setattr__",
+        "__sizeof__", "__str__", "__sub__", "__subclasshook__",
+        "__xor__", "add", "clear", "copy",
+        "difference", "difference_update", "discard", "intersection",
+        "intersection_update", "isdisjoint", "issubset", "issuperset",
+        "pop", "remove", "symmetric_difference", "symmetric_difference_update",
+        "union", "update"]
 
 intAttrs :: [(String, PyType)]
 intAttrs =
@@ -91,3 +116,30 @@ stringAttrs =
           "title", "translate", "upper", "zfill"]
     `mappend`
         [("__add__", Functional [("", mkAlpha strType)] (mkAlpha strType))]
+
+sysAttrs :: [(String, PyType)]
+sysAttrs =
+    map (,anyType)
+    ["__displayhook__", "__doc__", "__excepthook__", "__interactivehook__",
+    "__loader__", "__name__", "__package__", "__spec__",
+    "__stderr__", "__stdin__", "__stdout__", "_clear_type_cache",
+    "_current_frames", "_debugmallocstats", "_getframe", "_home",
+    "_mercurial", "_xoptions", "abiflags", "api_version",
+    "argv", "base_exec_prefix", "base_prefix", "builtin_module_names",
+    "byteorder", "call_tracing", "callstats", "copyright",
+    "displayhook", "dont_write_bytecode", "exc_info", "excepthook",
+    "exec_prefix", "executable", "exit", "flags",
+    "float_info", "float_repr_style", "get_coroutine_wrapper", "getallocatedblocks",
+    "getcheckinterval", "getdefaultencoding", "getdlopenflags", "getfilesystemencoding",
+    "getprofile", "getrecursionlimit", "getrefcount", "getsizeof",
+    "getswitchinterval", "gettrace", "hash_info", "hexversion",
+    "implementation", "int_info", "intern", "is_finalizing",
+    "maxsize", "maxunicode", "meta_path", "modules",
+    "path", "path_hooks", "path_importer_cache", "platform",
+    "prefix", "set_coroutine_wrapper", "setcheckinterval", "setdlopenflags",
+    "setprofile", "setrecursionlimit", "setswitchinterval", "settrace",
+    "stderr", "stdin", "stdout", "thread_info",
+    "version", "version_info", "warnoptions"]
+    `mappend`
+        [("platform", strType)]
+

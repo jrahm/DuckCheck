@@ -29,7 +29,7 @@ inferTypeForExpression state expr = do
               Any -> return Any
               _ -> case getAttribute exprType att of
                       Nothing -> do
-                          warn pos $ duckf "The expression " expr " may have no attribute " att "\n    " expr " :: " exprType
+                          warn pos $ duckf "The expression " expr " may have no attribute '" att "' (" expr " :: " exprType ")"
                           return Any
                       Just t -> return t
 

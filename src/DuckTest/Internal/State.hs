@@ -2,8 +2,6 @@ module DuckTest.Internal.State where
 
 import DuckTest.Internal.Common
 import DuckTest.Types
-import DuckTest.Monad
-import DuckTest.Parse
 
 import qualified Data.Map as Map
 
