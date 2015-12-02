@@ -1,0 +1,264 @@
+\documentclass[12pt,t]{beamer}
+
+\usepackage{graphicx}
+\usepackage{minted}
+\setbeameroption{hide notes}
+\setbeamertemplate{note page}[plain]
+
+% get rid of junk
+\usetheme{default}
+\beamertemplatenavigationsymbolsempty
+\hypersetup{pdfpagemode=UseNone} % don't show bookmarks on initial view
+
+% font
+\usepackage{fontspec}
+\setsansfont{TeX Gyre Heros}
+\setbeamerfont{note page}{family*=pplx,size=\footnotesize} % Palatino for notes
+% "TeX Gyre Heros can be used as a replacement for Helvetica"
+% In Unix, unzip the following into ~/.fonts
+% In Mac, unzip it, double-click the .otf files, and install using "FontBook"
+%   http://www.gust.org.pl/projects/e-foundry/tex-gyre/heros/qhv2.004otf.zip
+
+% named colors
+\definecolor{offwhite}{RGB}{249,242,215}
+\definecolor{foreground}{RGB}{255,255,255}
+\definecolor{background}{RGB}{24,24,24}
+\definecolor{title}{RGB}{214,174,107}
+\definecolor{gray}{RGB}{155,155,155}
+\definecolor{subtitle}{RGB}{152,255,104}
+\definecolor{hilight}{RGB}{102,255,204}
+\definecolor{vhilight}{RGB}{255,111,207}
+\definecolor{lolight}{RGB}{155,155,155}
+%\definecolor{green}{RGB}{125,250,125}
+
+% use those colors
+\setbeamercolor{titlelike}{fg=title}
+\setbeamercolor{subtitle}{fg=subtitle}
+\setbeamercolor{institute}{fg=gray}
+\setbeamercolor{normal text}{fg=foreground,bg=background}
+\setbeamercolor{item}{fg=foreground} % color of bullets
+\setbeamercolor{subitem}{fg=gray}
+\setbeamercolor{itemize/enumerate subbody}{fg=gray}
+\setbeamertemplate{itemize subitem}{{\textendash}}
+\setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}
+\setbeamerfont{itemize/enumerate subitem}{size=\footnotesize}
+
+% page number
+\setbeamertemplate{footline}{%
+    \raisebox{5pt}{\makebox[\paperwidth]{\hfill\makebox[20pt]{\color{gray}
+          \scriptsize\insertframenumber}}}\hspace*{5pt}}
+
+% add a bit of space at the top of the notes page
+\addtobeamertemplate{note page}{\setlength{\parskip}{12pt}}
+
+% a few macros
+\newcommand{\bi}{\begin{itemize}}
+\newcommand{\ei}{\end{itemize}}
+\newcommand{\ig}{\includegraphics}
+\newcommand{\subt}[1]{{\footnotesize \color{subtitle} {#1}}}
+\newcommand{\codepy}{\mintinline{python}}
+\newcommand{\vitem}{\vfill\item}
+
+% title info
+\title{DuckTest}
+\subtitle{Static Duck Type Checking for Python}
+\author{Josh Rahm}
+\institute{{Department of Computer Science} \\[2pt] {University of Colorado at Boulder}}
+\date{\tt \scriptsize \today
+\\
+\href{https://github.com/jrahm/}{\tt \scriptsize github.com/jrahm}
+}
+
+
+\begin{document}
+\usemintedstyle{monokai}
+% title slide
+{
+\setbeamertemplate{footline}{} % no page number here
+\frame{
+  \titlepage
+} }
+
+\begin{frame}{Enter DuckTest}
+    \subt{Powerful incecticide for a powerful language}
+    \begin{itemize}
+        \vitem DuckTest is yet another lint checker for Python, but with a different
+        philosophy than the others.
+
+        \vitem Instead of focusing on convention violations in the hope that better
+        conventions will lead to bug-free code, DuckTest goes right for the
+        throat and hunts down type errors before they crash your program!
+
+        \vitem DuckTest is also written in Haskell; it is just so much better
+        suited for this type of stuff than Python itself is.
+
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Example}
+    \subt{Code}
+    \vspace{0.5cm}
+
+    \begin{minipage}{0.5\textwidth}
+    \small\inputminted{python}{code/duck.py}
+    \end{minipage}
+    \begin{minipage}{0.4\textwidth}
+    \small\inputminted{python}{code/person.py}
+    \end{minipage}
+\end{frame}
+
+\begin{frame}{Example (Cont.)}
+    \small\inputminted{python}{code/body.py}
+\end{frame}
+
+\begin{frame}{Example (Cont.)}
+    \subt{What's the Problem?}
+    \begin{itemize}
+        \vfill\item \codepy{test_feathers(person)} is guaranteed to fail. It
+            is a blantant, easy to spot type-error for a human.
+        \vfill\item \codepy{ruffle} requires its argument to have an attribute
+            called \codepy{feathers}, but \codepy{Person} does not
+        \vfill\item Easy for a human to spot, it's just a couple calls down!
+        \vfill\item Yet no lint checkers found it! (They were too busy complaining
+            about my lack of docstrings)
+        \vfill\item DuckTest can find this in its sleep!
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Can't we all just get along?}
+    \subt{Duck-Typing is not Dynamic Typing!}
+
+    Many static type systems have elements of duck typing. Consider
+    the following C++:
+
+    \vfill
+    \inputminted{cpp}{code/cpp.cpp}
+    \vfill
+
+    If g++ can check that code at compile (actually link) time, why
+    can't Python?
+\end{frame}
+
+\begin{frame}{What's the Catch?}
+    \subt{Type-Erasure Semantics}
+    \bi
+    \vitem For DuckTest to work well, the code must be written using type-erasure
+    semantics. That is, the program should not branch based on the type of
+    an object at runtime. So, essentially no calls to \codepy{hasattr} or
+    branching based on \codepy{__class__}
+    \vitem Arguably, good code shouldn't do this anyway \ldots
+    \vitem Not a horrible constraint, most programmers keep track of types by
+    writing in this style anyway.
+    \ei
+\end{frame}
+
+\begin{frame}
+    \vfill
+    \centering\large Implementation
+\end{frame}
+
+\begin{frame}{The Usage}
+    DuckTest uses three primary algorithms to perform its checking:
+    \bi
+        \vitem Type Inference by Evaluation. This is discovering the type of some
+        variable based on the type of the expression it is assigned to. This is
+        used in conjunction with assignment to infer the type of a variable at assignment.
+
+        \vitem Type Inference by Observance. This is discovering the type of some
+        variable by observing how it is used. This is for infering the types of the
+        parameters to a function.
+
+        \vitem Type Matching. Given a two types $t_1$ and $t_2$ can $t_1$ act like $t_2$?
+        This can be thought of as, ``is $t_2$ `smaller' than $t_1$.'' This is where the
+        duck testing happens.
+    \ei
+\end{frame}
+
+\begin{frame}{Modeling Python's Types}
+    \vspace{0.5cm}
+    {\large \color{subtitle} {Structural Typing}}
+
+    \begin{quote}
+        A structural type system (or property-based
+        type system) is a major class of type system, in which type
+        compatibility and equivalence are determined by the type's actual
+        structure or definition, and not by other characteristics such as its
+        name or place of declaration (Wikipedia)
+    \end{quote}
+
+    \vfill
+    With some modifications \ldots
+\end{frame}
+
+\begin{frame}{The Model}
+    \inputminted{haskell}{code/model.hs}
+\end{frame}
+
+\begin{frame}{Scalar Type}
+    \vfill
+    The scalar type is the base structural type. It
+    has an array of attributes and their types. It also
+    contains an optional type name.
+    \vfill
+\end{frame}
+
+\begin{frame}{Functional Type}
+    \vfill
+    A type representing a function. It simply has a list
+    of possible arguments and a return type.
+    \vfill
+\end{frame}
+
+\begin{frame}{Alpha Type}
+    \vfill
+    Probably the most confusing type. It contains a name as well
+    as a refrence to a type. It is used for recursive types like
+    a LinkedList. Without this type, matching the type of a linked
+    list with another would result in non-termination. The alpha
+    type allows just the names to be compared and nothing more.
+    \vfill
+\end{frame}
+
+\begin{frame}{Any Type}
+    \vfill
+    Conceptually this is the infinite Scalar. It contains all
+    possible attributtes and is compatible with everything.
+    \vfill
+\end{frame}
+
+\begin{frame}{Void Type}
+    \vfill
+    Conceptually this is the empty Scalar. Strictly speaking, it
+    is redundant, but for debugging and ease of use it is included.
+    This is the opposite of the Any type. It is incompatible with everything.
+    \vfill
+\end{frame}
+
+\begin{frame}{Back to Eighth Grade}
+    \subt{An Algebra for PyType}
+
+    \begin{description}
+        \vitem[Union $t_1$ $t_2$] -- Returns a type that can act as either $t_1$ or $t_2$
+        \vitem[Intersection $t_1$ $t_2$] -- Returns a type that $t_1$ and $t_2$ can act like
+        \vitem[Difference $t_1$ $t_2$] -- Returns what is needed to allow $t_2$ to act like $t_1$
+        \vitem[Singleton $a$ $t$] -- Returns a structural type with exactly one attribute $a::t$
+    \end{description}
+\end{frame}
+
+\begin{frame}{Union}
+    \subt{Some Rules}
+    \[
+      \begin{array}{ll}
+          & Union\ Any\ \_ = Any \\
+          & Union\ \_\ Any = Any \\
+          & Union\ Void\ t_1 = t_1 \\
+          & Union\ t_1 Void = t_1 \\
+          & Union\ (Scalar\ m_1)\ (Scalar\ m_2) = Scalar\ (m_1\cup m_2) \\
+          & Union\ scalar\ fn = Union\ scalar\ (singleton\ \_\_call\_\_\ fn) \\
+          & \vdots
+    \end{array}
+    \]
+\end{frame}
+
+
+\end{document}
