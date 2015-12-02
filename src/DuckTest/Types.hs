@@ -235,8 +235,7 @@ prettyType' descend typ = execWriter $ prettyType' 0 typ
                  forM_ t $ \(_, typ) -> do
                      tell "\n, "
                      prettyType' (indent + 2) typ
-                 tell ")"
-             tell " -> "
+             tell ") -> "
              prettyType' (indent + 1) ret
 
           prettyType' _ Any = tell "Any"
