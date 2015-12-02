@@ -10,11 +10,12 @@ import DuckTest.Types
 
 import Debug.Trace
 
+
 class DuckShowable a where
-    duckShow :: LogLevel -> a -> String
+    duckShow :: LogLevel -> a -> DuckTest e String
 
 instance DuckShowable (LogLevel -> String) where
-    duckShow ll f = f ll
+    duckShow ll f = return $ f ll
 
 class DIsChar ch where
     charToString :: [ch] -> String
@@ -25,10 +26,13 @@ instance DIsChar Char where
     fromStringToChar = id
 
 instance (DIsChar a) => DuckShowable [a] where
-    duckShow = const charToString
+    duckShow _ c = return $ charToString c
 
 instance (DuckShowable a, DuckShowable b) => DuckShowable (a, b) where
-    duckShow ll (a, b) = duckShow ll a ++ duckShow ll b
+    duckShow ll (a, b) = do
+        v1 <- duckShow ll a
+        v2 <- duckShow ll b
+        return $ v1 ++ v2
 
 class LogResult r where
     logr :: (DuckShowable a) => a -> r
@@ -37,21 +41,36 @@ instance (DuckShowable a, LogResult r) => LogResult (a -> r) where
     logr fst snd = logr (fst, snd)
 
 instance (DIsChar ch) => LogResult (DuckTest e [ch]) where
-    logr a =
-        fromStringToChar <$> (duckShow <$> getLogLevel <*> pure a)
+    logr a = do
+        ll <- getLogLevel
+        str <- duckShow ll a
+        return $ fromStringToChar str
 
 instance (DuckShowable (Expr a)) where
-    duckShow _ = prettyText
+    duckShow _ = return . prettyText
 
 duckf :: (DuckShowable a, LogResult r) => a -> r
 duckf = logr
 
 warnTypeError :: e -> TypeError -> DuckTest e ()
 warnTypeError pos (Incompatible t1 t2) =
-    warn pos $ duckf "Incompatible types " t1 " and " t2
+    warn pos $ duckf "Incompatible types " Green t1 Reset " and " Green t2 Reset
 warnTypeError pos (Difference t1 t2 dif) =
-    warn pos $ duckf t1 " incompatible as " t2 ". Type " t1 " missing attributes needed: " (intercalate ", " (map (intercalate ".") dif))
+    warn pos $ duckf "'" Green t1 Reset "' incompatible as '" Green t2 Reset "'. Missing attributes needed: '" Green (intercalate ", " (map (intercalate ".") dif)) Reset "'"
 
+data Ansi = Green | Red | Yellow | Blue | Reset | Bold
+
+instance DuckShowable Ansi where
+    duckShow _ color = do
+        isterm <- runningInTerminal
+        if not isterm then return "" else return $
+            case color of
+                Red -> "\x1b[31m"
+                Green -> "\x1b[32m"
+                Yellow -> "\x1b[33m"
+                Blue -> "\x1b[34m"
+                Reset -> "\x1b[00m"
+                Bold -> "\x1b[01m"
 
 -- warnTypeError :: e -> TypeError -> DuckTest e ()
 -- warnTypeError pos (Incompatible t1 t2) =
@@ -59,9 +78,11 @@ warnTypeError pos (Difference t1 t2 dif) =
 --     warn pos $ duckf t1 t2
 
 instance (DuckShowable PyType) where
-    duckShow ll (Scalar (Attributes (Just name) s)) | ll > Trace = name
-    duckShow ll (Scalar (Attributes Nothing s)) | ll > Trace = "{ " ++ (intercalate ", " $ Map.keys s) ++ " }"
-    duckShow ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (\(a, b) -> duckShow ll a ++ " :: " ++ duckShow ll b) args) ++ ") -> " ++ duckShow ll ret
-    duckShow ll (Alpha n _) | ll > Trace = n
-    duckShow Trace t = prettyType' True t
-    duckShow _ t = prettyType' False t
+    duckShow ll t = return $ duckShow' ll t
+      where
+        duckShow' ll (Scalar (Attributes (Just name) s)) | ll > Trace = name
+        duckShow' ll (Scalar (Attributes Nothing s)) | ll > Trace = "{ " ++ (intercalate ", " $ Map.keys s) ++ " }"
+        duckShow' ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (\(a, b) -> a ++ " :: " ++ duckShow' ll b) args) ++ ") -> " ++ duckShow' ll ret
+        duckShow' ll (Alpha n _) | ll > Trace = n
+        duckShow' Trace t = prettyType' True t
+        duckShow' _ t = prettyType' False t

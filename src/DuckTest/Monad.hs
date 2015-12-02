@@ -7,9 +7,11 @@ module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                    typeHasAttr, fromSet, typeToString, getWarnings,
                    isCompatibleWith, setTypeName, warn, findImport, makeImport,
                    getTypeName, typeDifference, saveState, LogLevel(..), (%%), getLogLevel,
-                   (%%!)
+                   (%%!), runningInTerminal
                    ) where
 
+import System.Posix.Terminal
+import System.Posix.Types
 import System.FilePath
 import System.Directory
 import DuckTest.Internal.Common
@@ -39,6 +41,8 @@ data DuckTestState e = DuckTestState {
     {- Warning collection list. For printing them out
      - at the end -}
     , warnings :: [(String, e)]
+
+    , inTerminal :: Bool
 
     {- List of imported modules. -}
     , imports  :: Map [String] PyType
@@ -82,16 +86,19 @@ getWarnings = warnings
 hissLiftIO :: IO a -> DuckTest e a
 hissLiftIO = lift . lift
 
-emptyDuckTestState :: Set Flag -> LogLevel -> DuckTestState e
-emptyDuckTestState flags ll = DuckTestState flags ll mempty $
+emptyDuckTestState :: Set Flag -> LogLevel -> Bool -> DuckTestState e
+emptyDuckTestState flags ll term = DuckTestState flags ll mempty term $
     Map.singleton ["sys"] sysType
 
 runDuckTest :: Set Flag -> LogLevel -> DuckTest e a -> IO (Either String a)
-runDuckTest flags ll fn = evalStateT (runEitherT fn) (emptyDuckTestState flags ll)
+runDuckTest flags ll fn = do
+    isTerm <- queryTerminal (Fd 1)
+    evalStateT (runEitherT fn) (emptyDuckTestState flags ll isTerm)
 
 runDuckTestIO :: Set Flag -> LogLevel -> DuckTest e a -> IO (DuckTestState e)
-runDuckTestIO flags ll fn =
-    flip execStateT (emptyDuckTestState flags ll) $ do
+runDuckTestIO flags ll fn = do
+    isTerm <- queryTerminal (Fd 1)
+    flip execStateT (emptyDuckTestState flags ll isTerm) $ do
 
             either <- runEitherT fn
 
@@ -162,3 +169,6 @@ makeImport importPosition dottedlist parser checker = do
 
                         return modType
 infixl 1 %%
+
+runningInTerminal :: DuckTest e Bool
+runningInTerminal = lift $ inTerminal <$> get
