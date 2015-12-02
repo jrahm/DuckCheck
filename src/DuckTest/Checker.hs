@@ -69,8 +69,10 @@ instance CheckerState InternalState where
             let newstate = addVariableType name classFunctionalType currentState
             return newstate
 
-        (Assign {assign_to=[Var (Ident vname _) _], assign_expr=ex}) -> do
+        (Assign [Var (Ident vname _) _] ex pos) -> do
             inferredType <- inferTypeForExpression currentState ex
+            when (isVoid inferredType) $
+                warn pos $ duckf "Void type not ignored as it ought to be!"
             return $ addVariableType vname inferredType currentState
 
         (Conditional {cond_guards=guards, cond_else=elsebody}) -> do

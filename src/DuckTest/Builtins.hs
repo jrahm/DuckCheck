@@ -3,6 +3,7 @@ module DuckTest.Builtins where
 
 import DuckTest.Internal.State
 import DuckTest.Types
+import Text.Printf
 
 initState :: InternalState
 initState =
@@ -44,6 +45,9 @@ intType = Scalar $ setTypeName "int" $ addAllAttributes intAttrs
 
 setType :: PyType
 setType = Scalar $ setTypeName "set" $ addAllAttributes setAttrs
+
+listType :: PyType -> PyType
+listType _T = Scalar $ setTypeName (printf "list<%s>" (prettyType _T)) $ addAllAttributes $ listAttrs _T
 
 setAttrs :: [(String, PyType)]
 setAttrs =
@@ -141,5 +145,27 @@ sysAttrs =
     "stderr", "stdin", "stdout", "thread_info",
     "version", "version_info", "warnoptions"]
     `mappend`
-        [("platform", strType)]
+        [("platform", strType),
+         ("argv", listType strType)]
+
+
+listAttrs :: PyType -> [(String, PyType)]
+listAttrs _T =
+    map (,anyType)
+        ["__add__", "__class__", "__contains__", "__delattr__",
+        "__delitem__", "__dir__", "__doc__", "__eq__",
+        "__format__", "__ge__", "__getattribute__", "__getitem__",
+        "__gt__", "__hash__", "__iadd__", "__imul__",
+        "__init__", "__iter__", "__le__", "__len__",
+        "__lt__", "__mul__", "__ne__", "__new__",
+        "__reduce__", "__reduce_ex__", "__repr__", "__reversed__",
+        "__rmul__", "__setattr__", "__setitem__", "__sizeof__",
+        "__str__", "__subclasshook__", "append", "clear",
+        "copy", "count", "extend", "index",
+        "insert", "pop", "remove", "reverse",
+        "sort"]
+    `mappend`
+        [ ("__add__", Functional [("arg0", mkAlpha $ listType _T)] (mkAlpha $ listType _T))
+        , ("append", Functional [("arg0", _T)] Void)
+        ]
 

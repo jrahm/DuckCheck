@@ -29,19 +29,22 @@ import Control.Monad.Writer.Lazy hiding (Any)
  - The structure in the data is actually infinitely recursive, but thanks to haskell's
  - laziness, we don't have to worry about this.
  -}
-data PyType = Scalar StructuralType | Functional [(String, PyType)] PyType | Any | Alpha String PyType
+data PyType = Scalar StructuralType | Functional [(String, PyType)] PyType | Any | Alpha String PyType | Void
 
 instance Show PyType where
     show (Scalar st) = show st
     show (Functional args ret) = "(" ++ intercalate "," (map show args) ++ ") -> " ++ show ret
     show Any = "Any"
     show (Alpha name _) = "alpha " ++ name
+    show Void = "Void"
 
 instance Monoid PyType where
     mempty = Any
 
     mappend Any x = x
     mappend x Any = x
+    mappend Void x = Void
+    mappend x Void = Void
     mappend (Scalar st) ty@(Functional {}) =
         {- In Python, if we observe a variable being used as a function and a scalar,
          - then that variable is a scalar with a call function -}
@@ -80,14 +83,14 @@ callType (Scalar st) =
         Just (Functional a b) -> Just (map snd a, b)
         _ -> Nothing
 
-data TypeError = Incompatible PyType PyType | Difference PyType [[String]]
+data TypeError = Incompatible PyType PyType | Difference PyType PyType [[String]]
 
 matchType :: PyType -> PyType -> Maybe TypeError
 matchType t1 t2 | isCompatibleWith t1 t2 = Nothing
 matchType t1@(Scalar s1) t2@(Scalar s2) =
     case missingAttributes s2 s1 of
         [] -> Nothing
-        l -> Just (Difference t2 l)
+        l -> Just (Difference t2 t1 l)
 matchType t1 t2 = Just $ Incompatible t1 t2
 
 anyType :: PyType
@@ -137,6 +140,8 @@ typeHasAttr :: StructuralType -> String -> Bool
 typeHasAttr (Attributes _ m) str = Map.member str m
 
 isCompatibleWith :: PyType -> PyType -> Bool
+isCompatibleWith Void _ = False
+isCompatibleWith _ Void = False
 isCompatibleWith Any _ = True
 isCompatibleWith _ Any = True
 isCompatibleWith (Scalar t1) (Scalar t2) = isCompatibleWithStr t1 t2
@@ -241,5 +246,11 @@ prettyType' descend typ = execWriter $ prettyType' 0 typ
           prettyType' _ Any = tell "Any"
           prettyType' _ (Alpha nam _) = tell $ "alpha " ++ nam
 
+          prettyType' _ Void = tell "Void"
+
           tab :: Int -> Writer String ()
           tab indent = forM_ [1..indent] $ const $ tell " "
+
+isVoid :: PyType -> Bool
+isVoid Void = True
+isVoid _ = False

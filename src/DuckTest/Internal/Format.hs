@@ -49,8 +49,8 @@ duckf = logr
 warnTypeError :: e -> TypeError -> DuckTest e ()
 warnTypeError pos (Incompatible t1 t2) =
     warn pos $ duckf "Incompatible types " t1 " and " t2
-warnTypeError pos (Difference name dif) =
-    warn pos $ duckf "Type " name " missing attributes needed: " (intercalate ", " (map (intercalate ".") dif))
+warnTypeError pos (Difference t1 t2 dif) =
+    warn pos $ duckf t1 " incompatible as " t2 ". Type " t1 " missing attributes needed: " (intercalate ", " (map (intercalate ".") dif))
 
 
 -- warnTypeError :: e -> TypeError -> DuckTest e ()
@@ -63,5 +63,5 @@ instance (DuckShowable PyType) where
     duckShow ll (Scalar (Attributes Nothing s)) | ll > Trace = "{ " ++ (intercalate ", " $ Map.keys s) ++ " }"
     duckShow ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (duckShow ll) args) ++ ") -> " ++ duckShow ll ret
     duckShow ll (Alpha n _) | ll > Trace = n
-    duckShow Debug t = prettyType' False t
     duckShow Trace t = prettyType' True t
+    duckShow _ t = prettyType' False t
