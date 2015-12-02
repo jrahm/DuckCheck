@@ -61,7 +61,7 @@ warnTypeError pos (Difference t1 t2 dif) =
 instance (DuckShowable PyType) where
     duckShow ll (Scalar (Attributes (Just name) s)) | ll > Trace = name
     duckShow ll (Scalar (Attributes Nothing s)) | ll > Trace = "{ " ++ (intercalate ", " $ Map.keys s) ++ " }"
-    duckShow ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (duckShow ll) args) ++ ") -> " ++ duckShow ll ret
+    duckShow ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (\(a, b) -> duckShow ll a ++ " :: " ++ duckShow ll b) args) ++ ") -> " ++ duckShow ll ret
     duckShow ll (Alpha n _) | ll > Trace = n
     duckShow Trace t = prettyType' True t
     duckShow _ t = prettyType' False t

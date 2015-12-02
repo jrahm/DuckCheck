@@ -29,7 +29,11 @@ import Control.Monad.Writer.Lazy hiding (Any)
  - The structure in the data is actually infinitely recursive, but thanks to haskell's
  - laziness, we don't have to worry about this.
  -}
-data PyType = Scalar StructuralType | Functional [(String, PyType)] PyType | Any | Alpha String PyType | Void
+data PyType = Scalar StructuralType |
+              Functional [(String, PyType)] PyType |
+              Any |
+              Alpha String PyType |
+              Void
 
 instance Show PyType where
     show (Scalar st) = show st
@@ -62,10 +66,24 @@ data StructuralType = Attributes {
 data FunctionType = FunctionType [StructuralType] StructuralType
 
 instance Monoid StructuralType where
-
     mappend = unionType
-
     mempty = emptyType
+
+intersectTypes :: PyType -> PyType -> PyType
+intersectTypes = it
+    where it Void _ = Void
+          it _ Void = Void
+          it Any x  = x
+          it x Any  = x
+          it (Scalar s1) (Scalar s2) = Scalar (structuralTypeIntersection s1 s2)
+          it (Alpha s1 t1) (Scalar (Attributes s2 _)) | ((s1==) <$> s2) == Just True = Alpha s1 t1
+          it (Alpha s1 t1) (Alpha s2 t2) | s1 == s2 = Alpha s1 t1
+          it (Alpha _ t1) t2 = intersectTypes t1 t2
+          it t2 (Alpha _ t1) = intersectTypes t1 t2
+          it fn@(Functional {}) t2 = intersectTypes (Scalar $ singletonType "__call__" fn) t2
+          it t1 fn@(Functional {}) = intersectTypes fn t1
+
+(><) = intersectTypes
 
 mkAlpha :: PyType -> PyType
 mkAlpha s@(Scalar (Attributes name _)) = Alpha (fromMaybe "" name) s
@@ -95,6 +113,11 @@ matchType t1 t2 = Just $ Incompatible t1 t2
 
 anyType :: PyType
 anyType = Any
+
+structuralTypeIntersection :: StructuralType -> StructuralType -> StructuralType
+structuralTypeIntersection (Attributes s1 m1) (Attributes s2 m2) =
+    Attributes (if s1 == s2 then s1 else Nothing) $
+        Map.intersectionWith intersectTypes m1 m2
 
 typeDifference :: StructuralType -> StructuralType -> Map String PyType
 typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 `Map.difference` s2
@@ -144,7 +167,7 @@ isCompatibleWith Void _ = False
 isCompatibleWith _ Void = False
 isCompatibleWith Any _ = True
 isCompatibleWith _ Any = True
-isCompatibleWith (Scalar t1) (Scalar t2) = isCompatibleWithStr t1 t2
+isCompatibleWith (Scalar t1) (Scalar t2) = isCompatibleWithStr t2 t1
 isCompatibleWith (Functional p1 r1) (Functional p2 r2) = and (zipWith isCompatibleWith (map snd p1) (map snd p2)) && isCompatibleWith r1 r2
 isCompatibleWith (Alpha s1 _) (Alpha s2 _) = s1 == s2
 isCompatibleWith (Alpha _ s1) s2 = isCompatibleWith s1 s2

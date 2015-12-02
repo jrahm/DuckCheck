@@ -44,7 +44,6 @@ inferTypeForFunction state (Fun (Ident name _) params _ body _) =
         ret <- flip Functional returnType <$>
                 (zip parameterIdentifiers <$>
                  mapM (flip (inferTypeForVariable state) body) parameterIdentifiers)
-        Info %% printf "\n(Inferred) %s ::\n%s\n " name (prettyType ret)
         return ret
 
 
