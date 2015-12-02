@@ -7,21 +7,19 @@ import qualified Data.Map as Map
 
 {- An internal checker state with a map of variables to their types
  - and a possible return type. -}
-data InternalState = InternalState (Map String PyType) (Maybe PyType) Bool deriving Show
+data InternalState = InternalState (Map String PyType) PyType Bool deriving Show
 
 instance Monoid InternalState where
-    mempty = InternalState mempty Nothing False
-    mappend (InternalState m1 ret1 b1) (InternalState m2 ret2 b2) = InternalState (mappend m1 m2) (mappend ret1 ret2) (b1 && b2)
+    mempty = InternalState mempty Any False
+    mappend (InternalState m1 ret1 b1) (InternalState m2 ret2 b2) =
+            InternalState (mappend m1 m2) (ret1 >< ret2) (b1 && b2)
 
 stateToType :: InternalState -> PyType
-stateToType (InternalState m _ _) = Scalar $ Attributes Nothing m
+stateToType (InternalState m _ _) = Scalar Nothing m
 
 intersectStates :: InternalState -> InternalState -> InternalState
 intersectStates (InternalState m1 r1 b1) (InternalState m2 r2 b2) =
-    InternalState (Map.intersection m1 m2) (inter r1 r2) (b1 && b2)
-    where inter Nothing x = x
-          inter x Nothing = x
-          inter (Just x) (Just y) = Just $ x >< y
+    InternalState (Map.intersection m1 m2) (r1 >< r2) (b1 && b2)
 
 getFunctionType :: InternalState -> String -> Maybe ([PyType], PyType)
 getFunctionType st id =
@@ -42,15 +40,19 @@ hasVariable :: String -> InternalState -> Bool
 hasVariable vid = isJust . flip getVariableType vid
 
 emptyState :: InternalState
-emptyState = InternalState mempty Nothing False
+emptyState = mempty
 
 stateUnderFunction :: PyType -> InternalState -> InternalState
 stateUnderFunction (Functional args _) = addAll args
 stateUnderFunction _ = id
 
 setReturnType :: PyType -> InternalState -> InternalState
-setReturnType t (InternalState m _ _) = InternalState m (Just t) True
+setReturnType t (InternalState m _ _) = InternalState m t True
 
 returnHit :: InternalState -> Bool
 returnHit (InternalState _ _ True) = True
 returnHit _ = False
+
+getReturnType :: InternalState -> PyType
+getReturnType (InternalState _ _ False) = Void
+getReturnType (InternalState _ ret _) = ret

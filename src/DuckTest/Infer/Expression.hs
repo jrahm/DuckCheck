@@ -13,27 +13,27 @@ inferTypeForExpression state expr = do
 
       (Var (Ident name pos) _) ->
           maybe' (getVariableType state name)
-              (warn pos (duckf "The identifier " name " may not be defined") >> return anyType)
+              (warn pos (duckf "The identifier " name " may not be defined") >> return Any)
               return
 
       (Call callexpr args pos) -> do
           exprType <- checkCallExpression state callexpr args pos
           case exprType of
               (Functional args ret) -> return ret
-              _ -> return anyType
+              _ -> return Any
 
       (Dot expr (Ident att _) pos) -> do
           exprType <- inferTypeForExpression state expr
           Trace %% "Infer for type | " ++ prettyText expr ++ " :: " ++ prettyType exprType
           case exprType of
               Any -> return Any
-              _ -> case getAttribute exprType att of
+              _ -> case getAttribute att exprType of
                       Nothing -> do
                           warn pos $ duckf "The expression " expr " may have no attribute '" att "' (" expr " :: " exprType ")"
                           return Any
                       Just t -> return t
 
-      _ -> return anyType
+      _ -> return Any
 
     Trace %% prettyText expr ++ " :: " ++ prettyType ret
     return ret
@@ -43,10 +43,12 @@ checkCallExpression st lhs args pos = do
     lhsType <- inferTypeForExpression st lhs
     case lhsType of
         Any -> return () -- maybe adda paranoid warning here
-        _ -> case callType lhsType of
+        _ -> case getAttribute "__call__" lhsType of
                 Nothing -> warn pos $ duckf "The expression " lhs " does not appear to be callable"
-                Just (argTypes, _) ->
-                    zipWithM_ (tryMatchExprType st pos) argTypes args
+                Just (Functional argTypes _) ->
+                    zipWithM_ (tryMatchExprType st pos) (map snd argTypes) args
+                Just t ->
+                    warn pos $ duckf "The type for __call__ is not a function! Got " t
     return lhsType
 
     where
@@ -57,4 +59,4 @@ checkCallExpression st lhs args pos = do
 
 inferArgType :: InternalState -> Argument e -> DuckTest e PyType
 inferArgType st (ArgExpr expr _) = inferTypeForExpression st expr
-inferArgType _ _ = return anyType
+inferArgType _ _ = return Any

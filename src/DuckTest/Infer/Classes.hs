@@ -23,34 +23,36 @@ inferTypeForClass st cls@(Class {class_body = body, class_name = (Ident clname _
         let (Functional args _) = fixForSelf $ fromMaybe (Functional [] Any) maybeInitType
         let newst = addVariableType clname (Functional args $ Alpha clname Any) st
 
-        (functions, selfAssignments) <- mconcatMapM (walkFunctions newst) body
-        let topFunctions = addAllAttributes $ map (second fixForSelf) functions
+        (functions, Union selfAssignments) <- mconcatMapM (walkFunctions newst) body
+        let topFunctions = fromList Nothing $ map (second fixForSelf) functions
 
-        let retType = Scalar $ setTypeName clname $ rewireAlphas retType $ mappend topFunctions selfAssignments
+        let (Union tmpType) = mappend (Union topFunctions) (Union selfAssignments)
+        let retType = setTypeName clname $ rewireAlphas retType tmpType
 
         return $ Functional args retType
 
         where
-              walkFunctions :: InternalState -> Statement e -> DuckTest e ([(String, PyType)], StructuralType)
+              walkFunctions :: InternalState -> Statement e -> DuckTest e ([(String, PyType)], UnionType)
               walkFunctions state ex@(Fun {fun_name=(Ident name _), fun_body=body}) = do
                     fnType <- inferTypeForFunction state ex
                     let newstate = stateUnderFunction fnType state
-                    selfAssignments <- mconcatMapM (findSelfAssign newstate) (walkStatements ex)
-                    return ([(name, fnType)], selfAssignments)
-              walkFunctions _ _ = return ([], emptyType)
+                    (Union selfAssignments) <- mconcatMapM (Union <.< findSelfAssign newstate) (walkStatements ex)
+                    return ([(name, fnType)], Union selfAssignments)
+              walkFunctions _ _ = return ([], Union Void)
 
-              rewireAlphas :: PyType -> StructuralType -> StructuralType
-              rewireAlphas typ (Attributes str m) = Attributes str $ flip Map.map m $
+              rewireAlphas :: PyType -> PyType -> PyType
+              rewireAlphas typ (Scalar str m) = Scalar str $ flip Map.map m $
                                                           \t -> case t of
                                                             Alpha name _ | name == clname -> Alpha name typ
                                                             _ -> t
+              rewireAlphas _ t = t
 
 
               functionType state ex@(Fun {fun_name=(Ident name _)}) = Just . (,) name <$> inferTypeForFunction state ex
               functionType _ _ = return Nothing
 
-              findSelfAssign state (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] fromexpr _) = singletonType att <$> inferTypeForExpression state fromexpr
-              findSelfAssign _ _ = return emptyType
+              findSelfAssign state (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] fromexpr _) = singleton att <$> inferTypeForExpression state fromexpr
+              findSelfAssign _ _ = return Void
 
               findInit =  foldl (\x stmt -> case stmt of
                                   (Fun {fun_name = (Ident "__init__" _)}) ->

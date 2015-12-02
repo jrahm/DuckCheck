@@ -28,7 +28,6 @@ class CheckerState s where
 runChecker :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan s
 runChecker = foldM foldFunction
 
-
 runChecker_ :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan ()
 runChecker_ a = void . runChecker a
 
@@ -67,8 +66,8 @@ instance CheckerState InternalState where
                  let newstate = addVariableType name functionInferredType currentState
                  case functionInferredType of
                     (Functional args _) -> do
-                       (InternalState _ ret _) <- runChecker (addAll args newstate) body
-                       let newfntype = Functional args (fromMaybe Void ret)
+                       ret <- getReturnType <$> runChecker (addAll args newstate) body
+                       let newfntype = Functional args ret
                        Info %%! duckf "\n(Inferred) " name " :: " newfntype "\n"
 
                        return $ addVariableType name newfntype currentState

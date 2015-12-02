@@ -1,7 +1,10 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
+
 module DuckTest.Types where
 
-import DuckTest.Internal.Common
+import DuckTest.Internal.Common hiding (union)
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -29,208 +32,126 @@ import Control.Monad.Writer.Lazy hiding (Any)
  - The structure in the data is actually infinitely recursive, but thanks to haskell's
  - laziness, we don't have to worry about this.
  -}
-data PyType = Scalar StructuralType |
-              Functional [(String, PyType)] PyType |
-              Any |
-              Alpha String PyType |
-              Void
+
+data PyType =   Scalar (Maybe String) (Map String PyType)
+              | Functional [(String, PyType)] PyType
+              | Any
+              | Alpha String PyType
+              | Void
 
 instance Show PyType where
-    show (Scalar st) = show st
+    show (Scalar name strs) =
+        case Map.toList strs of
+            [] -> "Void"
+            l ->
+                fromMaybe "" name ++ "{" ++ intercalate ", " (map (\(str, typ) -> str ++ " :: " ++ show typ) l) ++ "}"
     show (Functional args ret) = "(" ++ intercalate "," (map show args) ++ ") -> " ++ show ret
     show Any = "Any"
     show (Alpha name _) = "alpha " ++ name
     show Void = "Void"
 
-instance Monoid PyType where
-    mempty = Void
+fromList :: Maybe String -> [(String, PyType)] -> PyType
+fromList m = Scalar m . Map.fromList
 
-    mappend Any _ = Any
-    mappend _ Any = Any
-    mappend Void x = x
-    mappend x Void = x
-    mappend (Scalar st) ty@(Functional {}) =
-        {- In Python, if we observe a variable being used as a function and a scalar,
-         - then that variable is a scalar with a call function -}
-        Scalar (addAttribute "__call__" ty st)
-    mappend (Functional p1 r1) (Functional p2 r2) = Functional (zipWith mappend p1 p2) (mappend r1 r2)
-    mappend ty@(Functional {}) st = mappend st ty
-    mappend (Scalar s1) (Scalar s2) = Scalar (s1 `mappend` s2)
-    mappend (Alpha _ s1) s2 = s2 `mappend` s1
+singleton :: String -> PyType -> PyType
+singleton str = Scalar Nothing . Map.singleton str
 
-data StructuralType = Attributes {
-      type_name :: Maybe String
-    , type_attributes :: Map String PyType
-}
+singletonAny :: String -> PyType
+singletonAny = flip singleton Any
 
-data FunctionType = FunctionType [StructuralType] StructuralType
+union :: PyType -> PyType -> PyType
+union Any _ = Any
+union _ Any = Any
+union t Void = t
+union Void t = t
+union (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.unionWith union m1 m2
+union sc@(Scalar {}) f@(Functional {}) = sc `union` singleton "__call__" f
+union f@(Functional {}) t = t `union` f
+union t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
+union t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
+union (Alpha _ s1) t2 = s1 `union` t2
+union t1 (Alpha _ s1) = t1 `union` s1
 
-instance Monoid StructuralType where
-    mappend = unionType
-    mempty = emptyType
+intersection :: PyType -> PyType -> PyType
+intersection Any t = t
+intersection t Any = t
+intersection Void _ = Void
+intersection _ Void = Void
+intersection (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.intersectionWith intersection m1 m2
+intersection sc@(Scalar {}) f@(Functional {}) = intersection sc (singleton "__call__" f)
+intersection f@(Functional {}) t = intersection t f
+intersection t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
+intersection t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
+intersection (Alpha _ s1) t2 = intersection s1 t2
+intersection t1 (Alpha _ s1) = intersection t1 s1
 
-intersectTypes :: PyType -> PyType -> PyType
-intersectTypes = it
-    where it Void _ = Void
-          it _ Void = Void
-          it Any x  = x
-          it x Any  = x
-          it (Scalar s1) (Scalar s2) = Scalar (structuralTypeIntersection s1 s2)
-          it (Alpha s1 t1) (Scalar (Attributes s2 _)) | ((s1==) <$> s2) == Just True = Alpha s1 t1
-          it (Alpha s1 t1) (Alpha s2 t2) | s1 == s2 = Alpha s1 t1
-          it (Alpha _ t1) t2 = intersectTypes t1 t2
-          it t2 (Alpha _ t1) = intersectTypes t1 t2
-          it fn@(Functional {}) t2 = intersectTypes (Scalar $ singletonType "__call__" fn) t2
-          it t1 fn@(Functional {}) = intersectTypes fn t1
+difference :: PyType -> PyType -> PyType
+difference Any _ = Any
+difference _ Any = Void
+difference t Void = t
+difference Void _ = Void
+difference (Scalar _ m1) (Scalar _ m2) = toVoid $ Scalar Nothing $ Map.differenceWith
+             (\a b -> let x = difference a b in if isVoid x then Nothing else Just x)
+                m1 m2
+difference sc@(Scalar {}) f@(Functional {}) = difference sc (singleton "__call__" f)
+difference f@(Functional {}) t = difference t f
+difference t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
+difference t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
+difference (Alpha _ s1) t2 = difference s1 t2
+difference t1 (Alpha _ s1) = difference t1 s1
 
-(><) = intersectTypes
+hasSameName :: PyType -> PyType -> Bool
+hasSameName (Alpha s1 _) (Alpha s2 _) | s1 == s2 = True
+hasSameName (Alpha s1 _) (Scalar (Just s2) _) | s1 == s2 = True
+hasSameName (Scalar (Just s2) _) (Alpha s1 _) | s1 == s2 = True
+hasSameName _ _ = False
 
-mkAlpha :: PyType -> PyType
-mkAlpha s@(Scalar (Attributes name _)) = Alpha (fromMaybe "" name) s
-mkAlpha s = Alpha "" s
+isVoid :: PyType -> Bool
+isVoid Void = True
+isVoid (Scalar _ m) | Map.null m = True
+isVoid _ = False
 
-getAttribute :: PyType -> String -> Maybe PyType
-getAttribute (Scalar st) str = attributeType st str
-getAttribute (Alpha _ st) str = getAttribute st str
+toVoid :: PyType -> PyType
+toVoid v | isVoid v = Void
+toVoid x = x
+
+isCompatibleAs :: PyType -> PyType -> Bool
+isCompatibleAs smaller larger = isVoid $ difference smaller larger
+
+getAttribute :: String -> PyType -> Maybe PyType
+getAttribute att (Scalar _ map) = Map.lookup att map
+getAttribute "__call__" f@(Functional {}) = Just f
+getAttribute att (Alpha _ t) = getAttribute att t
 getAttribute _ _ = Nothing
 
-callType :: PyType -> Maybe ([PyType], PyType)
-callType (Functional a b) = Just (map snd a, b)
-callType (Scalar st) =
-    case attributeType st "__call__" of
-        Just (Functional a b) -> Just (map snd a, b)
-        _ -> Nothing
+newtype UnionType = Union PyType
+instance Monoid UnionType where
+    mempty = Union Void
+    mappend (Union a) (Union b) = Union $ union a b
 
-data TypeError = Incompatible PyType PyType | Difference PyType PyType [[String]]
+newtype IntersectionType = Intersect PyType
+instance Monoid IntersectionType where
+    mempty = Intersect Any
+    mappend (Intersect a) (Intersect b) = Intersect $ intersection a b
 
-matchType :: PyType -> PyType -> Maybe TypeError
-matchType t1 t2 | isCompatibleWith t1 t2 = Nothing
-matchType t1@(Scalar s1) t2@(Scalar s2) =
-    case missingAttributes s2 s1 of
-        [] -> Nothing
-        l -> Just (Difference t2 t1 l)
-matchType t1 t2 = Just $ Incompatible t1 t2
+class Unwrapbable a b | a -> b where
+    unwrap :: a -> b
 
-anyType :: PyType
-anyType = Any
+instance Unwrapbable UnionType PyType where
+    unwrap (Union x) = x
 
-structuralTypeIntersection :: StructuralType -> StructuralType -> StructuralType
-structuralTypeIntersection (Attributes s1 m1) (Attributes s2 m2) =
-    Attributes (if s1 == s2 then s1 else Nothing) $
-        Map.intersectionWith intersectTypes m1 m2
+instance Unwrapbable IntersectionType PyType where
+    unwrap (Intersect x) = x
 
-typeDifference :: StructuralType -> StructuralType -> Map String PyType
-typeDifference (Attributes _ s1) (Attributes _ s2) =  s1 `Map.difference` s2
+(><) = intersection
+(<>) = union
 
-typeToString :: FunctionType -> String
-typeToString (FunctionType args ret) = intercalate " -> " $ map show (args ++ [ret])
-
-setTypeName :: String -> StructuralType -> StructuralType
-setTypeName str typ = typ {type_name = Just str}
-
-getTypeName :: StructuralType -> String
-getTypeName (Attributes Nothing _) = "?"
-getTypeName (Attributes (Just s) _) = s
-
-fromSet :: Set String -> StructuralType
-fromSet = Attributes Nothing . Map.fromList . map (,anyType) . Set.toList
-
-fromList :: [String] -> StructuralType
-fromList = fromSet . Set.fromList
-
-toMap :: StructuralType -> Map String PyType
-toMap (Attributes _ s) = s
-
-emptyType :: StructuralType
-emptyType = Attributes Nothing Map.empty
-
-singletonType :: String -> PyType -> StructuralType
-singletonType str typ = Attributes Nothing $ Map.singleton str typ
-
-attributeType :: StructuralType -> String -> Maybe PyType
-attributeType (Attributes _ m) s = Map.lookup s m
-
-addAttribute :: String -> PyType -> StructuralType -> StructuralType
-addAttribute attr typ (Attributes n m) = Attributes n $ Map.insert attr typ m
-
-addAllAttributes :: [(String, PyType)] -> StructuralType
-addAllAttributes = mconcatMap (uncurry singletonType)
-
-unionType :: StructuralType -> StructuralType -> StructuralType
-unionType (Attributes n m1) (Attributes _ m2) = Attributes n (Map.unionWith mappend m1 m2)
-
-typeHasAttr :: StructuralType -> String -> Bool
-typeHasAttr (Attributes _ m) str = Map.member str m
-
-isCompatibleWith :: PyType -> PyType -> Bool
-isCompatibleWith Void _ = False
-isCompatibleWith _ Void = False
-isCompatibleWith Any _ = True
-isCompatibleWith _ Any = True
-isCompatibleWith (Scalar t1) (Scalar t2) = isCompatibleWithStr t2 t1
-isCompatibleWith (Functional p1 r1) (Functional p2 r2) = and (zipWith isCompatibleWith (map snd p1) (map snd p2)) && isCompatibleWith r1 r2
-isCompatibleWith (Alpha s1 _) (Alpha s2 _) = s1 == s2
-isCompatibleWith (Alpha _ s1) s2 = isCompatibleWith s1 s2
-isCompatibleWith _ _ = False
-
-isCompatibleWithStr :: StructuralType -> StructuralType -> Bool
-isCompatibleWithStr (Attributes _ s1) (Attributes _ s2) | Map.null s1 = True
-                                                     | otherwise =
-                                                        and $ for (Map.toList s2) $
-                                                                \(member, typ1) ->
-                                                                    {- Iterate down and make sure all the sub expressions are also
-                                                                     - compatible with eachother. If the expression exists in s2, but
-                                                                     - not in s1, then False is returned, otherwise the compatibility
-                                                                     - of the other two types is returned -}
-                                                                    maybe' (Map.lookup member s1) False $ \typ2 ->
-                                                                        isCompatibleWith typ1 typ2
-
-missingAttributes :: StructuralType -> StructuralType -> [[String]]
-missingAttributes (Attributes _ s1) (Attributes _ s2) | Map.null s1 = []
-                                                      | otherwise =
-                                                         execWriter $
-                                                            forM_ (Map.toList s2) $ \(member, typ1) ->
-                                                                maybe' (Map.lookup member s1) (tell [[member]]) $ \typ2 ->
-                                                                    case (typ1, typ2) of
-                                                                        (Scalar t1', Scalar t2') ->
-                                                                            tell (map (member:) $ missingAttributes t1' t2')
-                                                                        _ -> return ()
-
-
-instance Show StructuralType where
-    show (Attributes name strs) =
-        case Map.toList strs of
-            [] -> "Any"
-            l ->
-                fromMaybe "" name ++ "{" ++ intercalate ", " (map (\(str, typ) -> str ++ " :: " ++ show typ) l) ++ "}"
-
-instance Show FunctionType where
-    show (FunctionType params ret) =
-            intercalate " -> " $ map show (params ++ [ret])
-
-data Function = Function
-                 String -- name of function
-                 FunctionType -- type of the function
-
-toStructuralType :: HClass -> StructuralType
-toStructuralType (HClass nm ty _) = setTypeName nm ty
-
-data HClass = HClass {
-                hclass_name :: String -- name of class
-              , hclass_type :: StructuralType -- inferred structural type of class
-              , hclass_methods :: Map String Function -- member functions
-              }
-
-{- Lift a type from being observed at the root to being observed
- - as the type of an attribute of some greater type. -}
-liftType :: String -> PyType -> PyType
-liftType str st = Scalar $ Attributes Nothing $ Map.singleton str st
+mkAlpha :: PyType -> PyType
+mkAlpha s@(Scalar name _) = Alpha (fromMaybe "" name) s
+mkAlpha s = Alpha "" s
 
 liftFromDotList :: [String] -> PyType -> PyType
-liftFromDotList list init = foldr liftType init list
-
-typeFromDotList :: [String] -> PyType
-typeFromDotList = foldr liftType anyType
+liftFromDotList list init = foldr singleton init list
 
 prettyType :: PyType -> String
 prettyType = prettyType' False
@@ -238,8 +159,8 @@ prettyType = prettyType' False
 prettyType' :: Bool -> PyType -> String
 prettyType' descend typ = execWriter $ prettyType' 0 typ
     where
-          prettyType' indent (Scalar (Attributes (Just name) s)) = tell name >> when descend (tell " " >> prettyType' indent (Scalar (Attributes Nothing s)))
-          prettyType' indent (Scalar (Attributes Nothing attrs)) = do
+          prettyType' indent (Scalar (Just name) s) = tell name >> when descend (tell " " >> prettyType' indent (Scalar Nothing s))
+          prettyType' indent (Scalar Nothing attrs) = do
                 tell "{ "
                 let lst = Map.toList attrs
                 unless (null lst) $  do
@@ -274,6 +195,17 @@ prettyType' descend typ = execWriter $ prettyType' 0 typ
           tab :: Int -> Writer String ()
           tab indent = forM_ [1..indent] $ const $ tell " "
 
-isVoid :: PyType -> Bool
-isVoid Void = True
-isVoid _ = False
+data TypeError = Incompatible PyType PyType | Difference PyType PyType (Map String PyType)
+
+{- No news is good news. Check to see if t1 is smaller than t2 -}
+matchType :: PyType -> PyType -> Maybe TypeError
+matchType t1 t2 =
+    let dif = difference t1 t2 in
+    if isVoid dif then Nothing else
+        case dif of
+            (Scalar _ map) -> Just (Difference t1 t2 map)
+            _ -> Just (Incompatible t1 t2)
+
+setTypeName :: String -> PyType -> PyType
+setTypeName s (Scalar _ m) = Scalar (Just s) m
+setTypeName _ t = t

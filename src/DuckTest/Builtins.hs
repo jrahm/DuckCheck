@@ -7,10 +7,10 @@ import Text.Printf
 
 initState :: InternalState
 initState =
-    addVariableType "print" (Functional [("", anyType)] anyType) $
-    addVariableType "len" (Functional [("", Scalar $ fromList ["__len__"])] anyType) $
-    addVariableType "str" (Functional [("", Scalar $ fromList ["__str__"])] strType) $
-    addVariableType "int" (Functional [("", anyType)] intType) $
+    addVariableType "print" (Functional [("", Any)] Any) $
+    addVariableType "len" (Functional [("", fromList Nothing $ map (,Any) ["__len__"])] Any) $
+    addVariableType "str" (Functional [("", fromList Nothing $ map (,Any) ["__str__"])] strType) $
+    addVariableType "int" (Functional [("", Any)] intType) $
     addVariableType "set" (Functional [] setType)
     emptyState
 --
@@ -35,23 +35,23 @@ initState =
 -- strClass = HClass "str" (fromList stringAttrs) Map.empty
 
 sysType :: PyType
-sysType = Scalar $ addAllAttributes sysAttrs
+sysType = fromList Nothing sysAttrs
 
 strType :: PyType
-strType = Scalar $ setTypeName "str" $ addAllAttributes stringAttrs
+strType = fromList (Just "str") stringAttrs
 
 intType :: PyType
-intType = Scalar $ setTypeName "int" $ addAllAttributes intAttrs
+intType = fromList (Just "int") intAttrs
 
 setType :: PyType
-setType = Scalar $ setTypeName "set" $ addAllAttributes setAttrs
+setType = fromList (Just "set") setAttrs
 
 listType :: PyType -> PyType
-listType _T = Scalar $ setTypeName (printf "list<%s>" (prettyType _T)) $ addAllAttributes $ listAttrs _T
+listType _T = fromList (Just $ printf "list<%s>" (prettyType _T))  (listAttrs _T)
 
 setAttrs :: [(String, PyType)]
 setAttrs =
-    map (,anyType)
+    map (,Any)
         ["__and__", "__class__", "__contains__", "__delattr__",
         "__dir__", "__doc__", "__eq__", "__format__",
         "__ge__", "__getattribute__", "__gt__", "__hash__",
@@ -69,7 +69,7 @@ setAttrs =
 
 intAttrs :: [(String, PyType)]
 intAttrs =
-    map (,anyType)
+    map (,Any)
         ["__abs__", "__add__", "__and__", "__bool__",
          "__ceil__", "__class__", "__delattr__", "__dir__", "__divmod__",
          "__doc__", "__eq__", "__float__", "__floor__",
@@ -86,14 +86,14 @@ intAttrs =
          "__setattr__", "__sizeof__", "__str__", "__sub__",
          "__subclasshook__", "__truediv__", "__trunc__", "__xor__",
          "bit_length", "conjugate", "denominator", "from_bytes",
-         "imag", "numerator", "real", "to_bytes"]
+         "imag", "numerator", "real", "to_bytes", "__div__"]
     `mappend`
         [("__add__", Functional [("", mkAlpha intType)] (mkAlpha intType)),
          ("__str__", Functional [] strType)]
 
 stringAttrs :: [(String, PyType)]
 stringAttrs =
-    map (,anyType)
+    map (,Any)
         ["__add__", "__class__", "__contains__",
           "__delattr__", "__dir__", "__doc__",
           "__eq__", "__format__", "__ge__",
@@ -123,7 +123,7 @@ stringAttrs =
 
 sysAttrs :: [(String, PyType)]
 sysAttrs =
-    map (,anyType)
+    map (,Any)
     ["__displayhook__", "__doc__", "__excepthook__", "__interactivehook__",
     "__loader__", "__name__", "__package__", "__spec__",
     "__stderr__", "__stdin__", "__stdout__", "_clear_type_cache",
@@ -151,7 +151,7 @@ sysAttrs =
 
 listAttrs :: PyType -> [(String, PyType)]
 listAttrs _T =
-    map (,anyType)
+    map (,Any)
         ["__add__", "__class__", "__contains__", "__delattr__",
         "__delitem__", "__dir__", "__doc__", "__eq__",
         "__format__", "__ge__", "__getattribute__", "__getitem__",

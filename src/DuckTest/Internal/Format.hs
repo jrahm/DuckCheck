@@ -56,7 +56,11 @@ warnTypeError :: e -> TypeError -> DuckTest e ()
 warnTypeError pos (Incompatible t1 t2) =
     warn pos $ duckf "Incompatible types " Green t1 Reset " and " Green t2 Reset
 warnTypeError pos (Difference t1 t2 dif) =
-    warn pos $ duckf "'" Green t1 Reset "' incompatible as '" Green t2 Reset "'. Missing attributes needed: '" Green (intercalate ", " (map (intercalate ".") dif)) Reset "'"
+    warn pos $ do
+        attrsNeeded <-
+                forM (Map.toList dif) $ \(key, typ) ->
+                    duckf key " :: " typ :: DuckTest e String
+        duckf "'" Green t1 Reset "' incompatible as '" Green t2 Reset "'. Missing attributes needed: '" Green (intercalate ", " attrsNeeded) Reset "'"
 
 data Ansi = Green | Red | Yellow | Blue | Reset | Bold
 
@@ -80,8 +84,8 @@ instance DuckShowable Ansi where
 instance (DuckShowable PyType) where
     duckShow ll t = return $ duckShow' ll t
       where
-        duckShow' ll (Scalar (Attributes (Just name) s)) | ll > Trace = name
-        duckShow' ll (Scalar (Attributes Nothing s)) | ll > Trace = "{ " ++ (intercalate ", " $ Map.keys s) ++ " }"
+        duckShow' ll (Scalar (Just name) s) | ll > Trace = name
+        duckShow' ll (Scalar Nothing s) | ll > Trace = "{ " ++ intercalate ", " (Map.keys s) ++ " }"
         duckShow' ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (\(a, b) -> a ++ " :: " ++ duckShow' ll b) args) ++ ") -> " ++ duckShow' ll ret
         duckShow' ll (Alpha n _) | ll > Trace = n
         duckShow' Trace t = prettyType' True t

@@ -1,12 +1,11 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
-                   die, fromEither, hissLiftIO, runDuckTestIO, StructuralType(..),
-                   emptyType, singletonType, unionType,
-                    Function(..), HClass(..), emitWarning,
-                   typeHasAttr, fromSet, typeToString, getWarnings,
-                   isCompatibleWith, setTypeName, warn, findImport, makeImport,
-                   getTypeName, typeDifference, saveState, LogLevel(..), (%%), getLogLevel,
+                   die, fromEither, hissLiftIO, runDuckTestIO,
+                   emitWarning,
+                   getWarnings,
+                   warn, findImport, makeImport,
+                   saveState, LogLevel(..), (%%), getLogLevel,
                    (%%!), runningInTerminal
                    ) where
 

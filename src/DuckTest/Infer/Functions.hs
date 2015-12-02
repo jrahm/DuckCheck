@@ -38,13 +38,12 @@ inferTypeForFunction state (Fun (Ident name _) params _ body _) =
     let parameterIdentifiers :: [String]
         parameterIdentifiers = map (tryGetIdentifier "") params
 
-        returnType = anyType -- cannot yet infer return type
-        in do
+        returnType = Any -- cannot yet infer return type
+        in
 
-        ret <- flip Functional returnType <$>
+        flip Functional returnType <$>
                 (zip parameterIdentifiers <$>
                  mapM (flip (inferTypeForVariable state) body) parameterIdentifiers)
-        return ret
 
 
 inferTypeForFunction _ _ =
@@ -58,7 +57,7 @@ inferTypeForVariable state varname stmts =
     {- This function, we walk through each expression in the
      - body of statements. In each expression, we look to see
      - how the parameter is being used. -}
-        mconcatMapM observeExpr (allExpressions stmts)
+        unwrap <$> mconcatMapM (Union <.< observeExpr) (allExpressions stmts)
 
     where
 
@@ -69,8 +68,9 @@ inferTypeForVariable state varname stmts =
 
         observeExpr (Dot (Var (Ident name _) _) (Ident attname _) _)
                      | name == varname =
+                        {- TODO infer the expression -}
                         (Debug %% printf "Found attribute usage: %s" attname) >>
-                        return (Scalar $ singletonType attname anyType)
+                        return (singleton attname Any)
 
         {- An observation where we call a function with x as an argument.
          - We use this to retrieve more information about `x`. Specifically,
@@ -98,25 +98,22 @@ inferTypeForVariable state varname stmts =
                                      - wstarting with the name of the variable we are trying
                                      - to use. -}
                                     expr | isDotChain varname expr ->
-                                        return $ liftOverDotChain (dotToList expr) exprType
+                                        return $ liftFromDotList (dotToList expr) exprType
 
                                     expr -> observeExpr expr
 
-                        mconcatMapM inferTypeFromArguments (zip args paramsType)
+                        unwrap <$> mconcatMapM (Union <.< inferTypeFromArguments) (zip args paramsType)
 
         observeExpr exp | isDotChain varname exp =
-            return $ typeFromDotList (tail $ dotToList exp)
+            return $ liftFromDotList (tail $ dotToList exp) Any
 
         observeExpr exp = iterateOverChildren exp
 
 
         {- infer through the child expressions of this expression -}
-        iterateOverChildren exp = mconcatMapM observeExpr (subExpressions exp)
+        iterateOverChildren exp = unwrap <$> mconcatMapM (Union <.< observeExpr) (subExpressions exp)
 
 {- Return true if this is a chain of attribute accesses with
  - the head of the list being the string given. -}
 isDotChain :: String -> Expr a -> Bool
 isDotChain str expr = (not . null) (dotToList expr) && (head (dotToList expr) == str)
-
-liftOverDotChain :: [String] -> PyType -> PyType
-liftOverDotChain lst st = foldr liftType st $ tail lst
