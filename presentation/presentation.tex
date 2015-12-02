@@ -186,19 +186,19 @@
 \filler{Implementation}
 
 \begin{frame}{The Algorithm(s)}
-    \bi
-        \vitem Type Inference by Evaluation. This is discovering the type of some
+    \begin{description}
+        \vitem[Type Inference by Evaluation] -- Infering the type of some
         variable based on the type of the expression it is assigned to. This is
         used in conjunction with assignment to infer the type of a variable at assignment.
 
-        \vitem Type Inference by Observance. This is discovering the type of some
+        \vitem[Type Inference by Observance] -- Infering the type of some
         variable by observing how it is used. This is for infering the types of the
         parameters to a function.
 
-        \vitem Type Matching. Given a two types $t_1$ and $t_2$ can $t_1$ act like $t_2$?
+        \vitem[Type Matching] -- Given a two types $t_1$ and $t_2$ can $t_1$ act like $t_2$?
         This can be thought of as, ``is $t_2$ `smaller' than $t_1$.'' This is where the
         duck testing happens.
-    \ei
+    \end{description}
     Because Python is so dynamic, these all happen at the same time!
 \end{frame}
 
