@@ -2,6 +2,7 @@
 
 \usepackage{graphicx}
 \usepackage{minted}
+\usepackage{amsmath}
 \setbeameroption{hide notes}
 \setbeamertemplate{note page}[plain]
 
@@ -57,7 +58,15 @@
 \newcommand{\ig}{\includegraphics}
 \newcommand{\subt}[1]{{\footnotesize \color{subtitle} {#1}}}
 \newcommand{\codepy}{\mintinline{python}}
+\newcommand{\codehs}{\mintinline{haskell}}
 \newcommand{\vitem}{\vfill\item}
+
+\newcommand{\filler}[1]{%
+        \begin{frame}
+            \vfill
+            \centering{\color{title}\large#1}
+        \end{frame}
+    }
 
 % title info
 \title{DuckTest}
@@ -71,16 +80,38 @@
 
 
 \begin{document}
+
+\setbeamercolor{item}{fg=title}
 \usemintedstyle{monokai}
 % title slide
-{
+{%
 \setbeamertemplate{footline}{} % no page number here
-\frame{
+\begin{frame}
   \titlepage
-} }
+  \vfill
+  \centering\tiny{(Template unbashedly modified from \href{https://github.com/kbroman/Talk_OpenAccess}{Karl Broman)}}
+\end{frame} }
+
+\filler{Motivation}
+
+\begin{frame}{Problem}
+    \vfill
+    \vspace{-0.5cm}
+    Python is way too susceptible to TypeErrors. The number of
+    times I've gotten ``None type is not iterable'' or crashed
+    because an \codepy{str} cannot be concated with \codepy{int},
+    my favorite, has no attribute \codepy{contians},
+    is just unbearable and extremely frustrating!
+    \begin{description}
+        \vitem[REPL] = {\color{title}{R}}un, try to {\color{title}{E}}val and {\color{title}{P}}uke {\color{title}{L}}oop
+    \end{description}
+    \vspace{0.5cm}
+
+    It slows production to such a crawl, C++ would be better!
+\end{frame}
 
 \begin{frame}{Enter DuckTest}
-    \subt{Powerful incecticide for a powerful language}
+    \subt{Powerful incecticide}
     \begin{itemize}
         \vitem DuckTest is yet another lint checker for Python, but with a different
         philosophy than the others.
@@ -99,10 +130,10 @@
     \subt{Code}
     \vspace{0.5cm}
 
-    \begin{minipage}{0.5\textwidth}
+    \begin{minipage}[t]{0.5\textwidth}
     \small\inputminted{python}{code/duck.py}
     \end{minipage}
-    \begin{minipage}{0.4\textwidth}
+    \begin{minipage}[t]{0.4\textwidth}
     \small\inputminted{python}{code/person.py}
     \end{minipage}
 \end{frame}
@@ -126,7 +157,7 @@
 \end{frame}
 
 \begin{frame}{Can't we all just get along?}
-    \subt{Duck-Typing is not Dynamic Typing!}
+    \subt{Duck-Typing $\not=$ Dynamic Typing!}
 
     Many static type systems have elements of duck typing. Consider
     the following C++:
@@ -152,13 +183,9 @@
     \ei
 \end{frame}
 
-\begin{frame}
-    \vfill
-    \centering\large Implementation
-\end{frame}
+\filler{Implementation}
 
-\begin{frame}{The Usage}
-    DuckTest uses three primary algorithms to perform its checking:
+\begin{frame}{The Algorithm(s)}
     \bi
         \vitem Type Inference by Evaluation. This is discovering the type of some
         variable based on the type of the expression it is assigned to. This is
@@ -172,6 +199,7 @@
         This can be thought of as, ``is $t_2$ `smaller' than $t_1$.'' This is where the
         duck testing happens.
     \ei
+    Because Python is so dynamic, these all happen at the same time!
 \end{frame}
 
 \begin{frame}{Modeling Python's Types}
@@ -196,20 +224,31 @@
 
 \begin{frame}{Scalar Type}
     \vfill
+    \codehs{Scalar (Maybe String) (Map String PyType)}
+    \vfill
     The scalar type is the base structural type. It
     has an array of attributes and their types. It also
-    contains an optional type name.
+    contains an optional type name. While strictly speaking,
+    the type name is not an actual part of a structural type,
+    it is useful as we'll see.
     \vfill
 \end{frame}
 
 \begin{frame}{Functional Type}
     \vfill
+    \codehs{Functional [PyType] PyType}
+    \vfill
     A type representing a function. It simply has a list
-    of possible arguments and a return type.
+    of possible arguments and a return type. It can be thought
+    of as a scalar with a single method (in Python) `\_\_call\_\_',
+    we still need it though, because without it, what would the type
+    of `\_\_call\_\_' be?
     \vfill
 \end{frame}
 
 \begin{frame}{Alpha Type}
+    \vfill
+    \codehs{Alpha String PyType}
     \vfill
     Probably the most confusing type. It contains a name as well
     as a refrence to a type. It is used for recursive types like
@@ -221,16 +260,24 @@
 
 \begin{frame}{Any Type}
     \vfill
+    \codehs{Any}
+    \vfill
     Conceptually this is the infinite Scalar. It contains all
-    possible attributtes and is compatible with everything.
+    possible attributtes all of which have the Any type. The
+    Any type is compatible with all other types. Conceptually,
+    it is redundent since it is just a scalar with everything,
+    but practically we cannot implement that efficiently.
     \vfill
 \end{frame}
 
 \begin{frame}{Void Type}
     \vfill
+    \codehs{Void}
+    \vfill
     Conceptually this is the empty Scalar. Strictly speaking, it
-    is redundant, but for debugging and ease of use it is included.
-    This is the opposite of the Any type. It is incompatible with everything.
+    is redundant, but for debugging and ease of use it is included. This
+    is considered the `zero' type (yes, types can be monoids!),
+    Making it the opposite of the Any type. It is incompatible with everything.
     \vfill
 \end{frame}
 
@@ -253,12 +300,109 @@
           & Union\ \_\ Any = Any \\
           & Union\ Void\ t_1 = t_1 \\
           & Union\ t_1 Void = t_1 \\
-          & Union\ (Scalar\ m_1)\ (Scalar\ m_2) = Scalar\ (m_1\cup m_2) \\
+          & Union\ (Scalar\ m_1)\ (Scalar\ m_2) = Scalar\ (m_1\cup_r m_2) \\
           & Union\ scalar\ fn = Union\ scalar\ (singleton\ \_\_call\_\_\ fn) \\
           & \vdots
     \end{array}
     \]
+
+    \vfill
+    \centering\tiny{($\cup_r$ is the recursive union operator -- unionWith Union)}
 \end{frame}
+
+\begin{frame}{Intersection}
+    \subt{Some Rules}
+    \[
+      \begin{array}{ll}
+          & Inter\ Any\ t_1 = t_1 \\
+          & Inter\ t_1\ Any = t_1 \\
+          & Inter\ Void\ t_1 = Void \\
+          & Inter\ t_1 Void = Void \\
+          & Inter\ (Scalar\ m_1)\ (Scalar\ m_2) = Scalar\ (m_1\cap_r m_2) \\
+          & Inter\ scalar\ fn = Inter\ scalar\ (singleton\ \_\_call\_\_\ fn) \\
+          & \vdots
+    \end{array}
+    \]
+
+    \vfill
+    \centering\tiny{($\cap_r$ is the recursive intersection operator -- intercectWith Inter)}
+\end{frame}
+
+\begin{frame}{Difference}
+    \subt{Some Rules}
+    \[
+      \begin{array}{ll}
+          & Diff\ Any\ \_ = Any \\
+          & Diff\ \_\ Any = Void \\
+          & Diff\ Void\ t_1 = Void \\
+          & Diff\ t_1 Void = t_1 \\
+          & Diff\ (Scalar\ m_1)\ (Scalar\ m_2) = Scalar\ (m_1\setminus_r m_2) \\
+          & Diff\ scalar\ fn = Diff\ scalar\ (singleton\ \_\_call\_\_\ fn) \\
+          & \vdots
+    \end{array}
+    \]
+
+    \vfill
+    \centering\tiny{($\setminus_r$ is the recursive difference operator -- differenceWith Diff)}
+\end{frame}
+
+\begin{frame}{Using Our Algebra}
+    \subt{Function Argument Inference}
+
+    \bi
+        \vitem A function is a set of arguments and statements and statements
+        have expressions.
+
+        \vitem To infer the type of an argument, we use the observant type inference.
+        \bi
+            \vitem Each time we observe an attribute $a :: t_a$ access on argument $v$
+            we say $v :: t \Rightarrow v :: (t \cup singleton\ a\ t_a)$
+            \vitem More formal
+            \[
+                \frac {
+                    \gamma[v] = t\qquad v.a :: t_a
+                } {
+                    v.a \rightarrow \gamma[v/t \cup singleton\ a\ t_a]
+                }
+            \]
+            \vitem Essentially, we walk through the expression and union together
+            all observed attribute accesses.
+        \ei
+    \ei
+\end{frame}
+
+\begin{frame}{Using Our Algebra}
+    \subt{Function Return Type Inference}
+
+    \bi
+        \vitem We use evaluation type inference for this.
+        \bi
+            \vitem Find all return statements $return\ expr$
+            \vitem Infer the type of $expr :: t$
+            \vitem The function is said to return the \emph{intersection}
+                of all return expression types.
+        \ei
+    \ei
+\end{frame}
+
+\begin{frame}{Using Our Algebra}
+    \subt{Type Matching}
+
+    \bi
+        \vitem Function calls have expected types for parameters.
+        \vitem Match each argument expression with the expected type.
+        \vitem $match\ t_h\ t_e = (diff\ t_e\ t_h = Void)$
+
+        If the type expected is less than or equal to type the type we have,
+        the two are compatible.
+    \ei
+\end{frame}
+
+\begin{frame}
+    \vfill
+    \centering\large Demo
+\end{frame}
+
 
 
 \end{document}
