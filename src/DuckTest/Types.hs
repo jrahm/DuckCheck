@@ -43,12 +43,12 @@ instance Show PyType where
     show Void = "Void"
 
 instance Monoid PyType where
-    mempty = Any
+    mempty = Void
 
-    mappend Any x = x
-    mappend x Any = x
-    mappend Void x = Void
-    mappend x Void = Void
+    mappend Any _ = Any
+    mappend _ Any = Any
+    mappend Void x = x
+    mappend x Void = x
     mappend (Scalar st) ty@(Functional {}) =
         {- In Python, if we observe a variable being used as a function and a scalar,
          - then that variable is a scalar with a call function -}
