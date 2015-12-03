@@ -15,7 +15,7 @@ class Person:
     def quack(self):
         print("I immitate a 'quack'")
 def ruffle(duck):
-    duck.feathers()
+    duck.feathers().hi
 def test_feathers(duck):
     duck.walk()
     duck.quack()

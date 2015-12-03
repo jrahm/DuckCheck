@@ -1,5 +1,3 @@
-import os
-
 class LinkedList:
 
     def __init__(self):
@@ -8,4 +6,4 @@ class LinkedList:
     def add(self):
         self.next = LinkedList()
 
-print (LinkedList().next)
+print (LinkedList().next.next.data)

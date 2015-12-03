@@ -59,33 +59,41 @@ singleton str = Scalar Nothing . Map.singleton str
 singletonAny :: String -> PyType
 singletonAny = flip singleton Any
 
-union :: PyType -> PyType -> PyType
-union Any _ = Any
-union _ Any = Any
-union t Void = t
-union Void t = t
-union (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.unionWith union m1 m2
-union sc@(Scalar {}) f@(Functional {}) = sc `union` singleton "__call__" f
-union f@(Functional {}) t = t `union` f
-union t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
-union t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
-union (Alpha _ s1) t2 = s1 `union` t2
-union t1 (Alpha _ s1) = t1 `union` s1
+union = union'
+union' :: PyType -> PyType -> PyType
+union' Any _ = Any
+union' _ Any = Any
+union' t Void = t
+union' Void t = t
+union' (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.unionWith union m1 m2
+union' sc@(Scalar {}) f@(Functional {}) = sc `union` singleton "__call__" f
+union' (Functional args1 ret1) (Functional args2 ret2) =
+    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, union t1 t2)) args1 args2)
+               (union ret1 ret2)
+union' f@(Functional {}) t = t `union` f
+union' t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
+union' t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
+union' (Alpha _ s1) t2 = s1 `union` t2
+union' t1 (Alpha _ s1) = t1 `union` s1
 
-intersection :: PyType -> PyType -> PyType
-intersection Any t = t
-intersection t Any = t
-intersection Void _ = Void
-intersection _ Void = Void
-intersection (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.intersectionWith intersection m1 m2
-intersection sc@(Scalar {}) f@(Functional {}) = intersection sc (singleton "__call__" f)
-intersection f@(Functional {}) t = intersection t f
-intersection t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
-intersection t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
-intersection (Alpha _ s1) t2 = intersection s1 t2
-intersection t1 (Alpha _ s1) = intersection t1 s1
+intersection = intersection'
+intersection' :: PyType -> PyType -> PyType
+intersection' Any t = t
+intersection' t Any = t
+intersection' Void _ = Void
+intersection' _ Void = Void
+intersection' (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.intersectionWith intersection m1 m2
+intersection' sc@(Scalar {}) f@(Functional {}) = intersection sc (singleton "__call__" f)
+intersection' (Functional args1 ret1) (Functional args2 ret2) =
+    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, intersection t1 t2)) args1 args2)
+               (intersection ret1 ret2)
+intersection' f@(Functional {}) t = intersection t f
+intersection' t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
+intersection' t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
+intersection' (Alpha _ s1) t2 = intersection s1 t2
+intersection' t1 (Alpha _ s1) = intersection t1 s1
 
-difference x y = let dif = difference' x y in trace (prettyType' True x ++ " - " ++ prettyType' True y ++ " = " ++ prettyType' True dif) dif
+difference = difference'
 
 difference' :: PyType -> PyType -> PyType
 difference' Any Any = Void
@@ -99,6 +107,11 @@ difference' (Scalar _ m1) (Scalar _ m2) =
         fn t1 t2 = if isVoid (difference t1 t2) then
                     Nothing else Just (difference t1 t2)
 difference' sc@(Scalar {}) f@(Functional {}) = difference sc (singleton "__call__" f)
+difference' (Functional args1 ret1) (Functional args2 ret2) =
+    let almost = Functional (zipWith (\(s1, t1) (_, t2) -> (s1, difference t1 t2)) args1 args2)
+                    (difference ret1 ret2)
+                    in if isVoidFunction almost then Void else almost
+
 difference' f@(Functional {}) t = difference t f
 difference' t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
 difference' t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
@@ -202,11 +215,15 @@ prettyType' descend typ = execWriter $ prettyType' 0 typ
 
 data TypeError = Incompatible PyType PyType | Difference PyType PyType (Map String PyType)
 
+isVoidFunction :: PyType -> Bool
+isVoidFunction (Functional args ret) = all (isVoid . snd) (("",ret):args)
+isVoidFunction _ = False
+
 {- No news is good news. Check to see if t1 is smaller than t2 -}
 matchType :: PyType -> PyType -> Maybe TypeError
 matchType t1 t2 =
     let dif = difference t1 t2 in
-    if isVoid dif then Nothing else
+    if isVoid dif || isVoidFunction dif then Nothing else
         case dif of
             (Scalar _ map) -> Just (Difference t1 t2 map)
             _ -> Just (Incompatible t1 t2)

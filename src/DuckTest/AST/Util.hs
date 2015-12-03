@@ -282,3 +282,6 @@ instance HasIdentifier (Parameter a) where
 
 tryGetIdentifier :: (HasIdentifier a) => String -> a -> String
 tryGetIdentifier str = fromMaybe str . getIdentifier
+
+exprEq :: Expr a -> Expr b -> Bool
+exprEq e1 e2 = void e1 == void e2

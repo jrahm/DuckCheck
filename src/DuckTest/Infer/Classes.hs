@@ -35,7 +35,7 @@ inferTypeForClass st cls@(Class {class_body = body, class_name = (Ident clname _
               walkFunctions :: InternalState -> Statement e -> DuckTest e ([(String, PyType)], UnionType)
               walkFunctions state ex@(Fun {fun_name=(Ident name _), fun_body=body}) = do
                     fnType <- inferTypeForFunction state ex
-                    let newstate = stateUnderFunction fnType state
+                    let newstate = addVariableType clname (Functional [] $ Alpha clname Any) $ stateUnderFunction fnType state
                     (Union selfAssignments) <- mconcatMapM (Union <.< findSelfAssign newstate) (walkStatements ex)
                     return ([(name, fnType)], Union selfAssignments)
               walkFunctions _ _ = return ([], Union Void)
@@ -51,7 +51,10 @@ inferTypeForClass st cls@(Class {class_body = body, class_name = (Ident clname _
               functionType state ex@(Fun {fun_name=(Ident name _)}) = Just . (,) name <$> inferTypeForFunction state ex
               functionType _ _ = return Nothing
 
-              findSelfAssign state (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] fromexpr _) = singleton att <$> inferTypeForExpression state fromexpr
+              findSelfAssign state (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] fromexpr _) =
+                case fromexpr of
+                    None _ -> return $ singleton att  Void
+                    _ -> singleton att <$> inferTypeForExpression state fromexpr
               findSelfAssign _ _ = return Void
 
               findInit =  foldl (\x stmt -> case stmt of

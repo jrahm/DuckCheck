@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE BangPatterns #-}
 {- Module with the checker and iterate functions -}
 
 module DuckTest.Checker where
@@ -26,13 +27,18 @@ class CheckerState s where
     foldFunction :: s -> Statement SrcSpan -> DuckTest SrcSpan s
 
 runChecker :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan s
-runChecker = foldM foldFunction
+runChecker init stmts = do
+    Trace %%! duckf "Running checker on stmts"
+    forM_ stmts $ \s -> Trace %%! duckf s
+    foldM foldFunction init stmts
 
 runChecker_ :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan ()
 runChecker_ a = void . runChecker a
 
 instance CheckerState InternalState where
     foldFunction currentState statement = do
+        Trace %%! duckf "check: " statement
+
         when (returnHit currentState) $
             warn (annot statement) $ duckf "Dead code"
 
@@ -62,14 +68,13 @@ instance CheckerState InternalState where
             (Fun {fun_name = (Ident name _), fun_body = body}) -> do
                 {- For functions, we infer the type and recursively check the
                  - function body for errors. -}
-                 functionInferredType <- inferTypeForFunction currentState statement
+                 !functionInferredType <- inferTypeForFunction currentState statement
                  let newstate = addVariableType name functionInferredType currentState
                  case functionInferredType of
                     (Functional args _) -> do
                        ret <- getReturnType <$> runChecker (addAll args newstate) body
                        let newfntype = Functional args ret
                        Info %%! duckf "\n(Inferred) " name " :: " newfntype "\n"
-
                        return $ addVariableType name newfntype currentState
                     _ -> do
                         Warn %% "This should not happen, infer type of function returned a type that isn't a function."
@@ -77,7 +82,7 @@ instance CheckerState InternalState where
 
             (Class {class_name = (Ident name _), class_body = body}) -> do
                 classFunctionalType <- inferTypeForClass currentState statement
-                Debug %% printf "\nClass added and has type ::\n%s\n " (prettyType classFunctionalType)
+                Debug %%! duckf "Class added and has type :: " classFunctionalType
                 let newstate = addVariableType name classFunctionalType currentState
                 return newstate
 

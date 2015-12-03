@@ -23,6 +23,9 @@ import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
 import DuckTest.Types
 import DuckTest.Internal.State
+import DuckTest.Internal.Format
+
+import Debug.Trace
 
 {- This function will take a Python function and infer the type
  - of this function. The type infered from this function is
@@ -53,24 +56,31 @@ inferTypeForFunction _ _ =
 {- Collects and infers the type of a variable name over
  - the span of the list of statements given. -}
 inferTypeForVariable :: forall e. InternalState -> String -> [Statement e] -> DuckTest e PyType
-inferTypeForVariable state varname stmts =
-    {- This function, we walk through each expression in the
-     - body of statements. In each expression, we look to see
-     - how the parameter is being used. -}
-        unwrap <$> mconcatMapM (Union <.< observeExpr) (allExpressions stmts)
+inferTypeForVariable state varname = observeTypeForExpression state (Var (Ident varname ()) ())
 
-    where
+observeTypeForExpression :: InternalState -> Expr b -> [Statement e] -> DuckTest e PyType
+observeTypeForExpression state expr stmts = do
+        {- This function, we walk through each expression in the
+         - body of statements. In each expression, we look to see
+         - how the parameter is being used. -}
+            fn <- unwrap <$> mconcatMapM (Union <.< observeExpr) (allExpressions stmts)
+            Debug %%! duckf expr " :: " fn
+            return fn
 
+        where
         {- An observation of the pattern `x.y` we use this
          - to infer that the argument `x` must have an attribute
          - `y` -}
-        observeExpr :: Expr a -> DuckTest a PyType
-
-        observeExpr (Dot (Var (Ident name _) _) (Ident attname _) _)
-                     | name == varname =
+        observeExpr ex@(Dot e (Ident attname _) _)
+                     | e `exprEq` expr = do
                         {- TODO infer the expression -}
-                        (Debug %% printf "Found attribute usage: %s" attname) >>
-                        return (singleton attname Void)
+                        typ <- observeTypeForExpression state ex stmts
+                        return $ singleton attname typ
+
+        observeExpr ex@(Call e args _)
+                    | e `exprEq` expr =
+                        Functional (map (const ("", Void)) args) <$>
+                            observeTypeForExpression state ex stmts
 
         {- An observation where we call a function with x as an argument.
          - We use this to retrieve more information about `x`. Specifically,
@@ -91,21 +101,13 @@ inferTypeForVariable state varname stmts =
                                  - search for evidence in the expression -}
                                 case getExpression expr' of
 
-                                    (Var (Ident nm _) _) | nm == varname ->
+                                    ex | ex `exprEq` expr  ->
                                         return exprType
 
-                                    {- We have observed a chain of attribute accesses
-                                     - wstarting with the name of the variable we are trying
-                                     - to use. -}
-                                    expr | isDotChain varname expr ->
-                                        return $ liftFromDotList (dotToList expr) exprType
 
-                                    expr -> observeExpr expr
+                                    ex -> observeExpr ex
 
                         unwrap <$> mconcatMapM (Union <.< inferTypeFromArguments) (zip args paramsType)
-
-        observeExpr exp | isDotChain varname exp =
-            return $ liftFromDotList (tail $ dotToList exp) Any
 
         observeExpr exp = iterateOverChildren exp
 

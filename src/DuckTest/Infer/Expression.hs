@@ -9,6 +9,7 @@ import DuckTest.Internal.Format
 
 inferTypeForExpression :: InternalState -> Expr e -> DuckTest e PyType
 inferTypeForExpression state expr = do
+    Trace %%! duckf "TEST => " expr
     ret <- case expr of
 
       (Var (Ident name pos) _) ->
@@ -32,7 +33,7 @@ inferTypeForExpression state expr = do
                           warn pos $ duckf "The expression " expr " may have no attribute '" att "' (" expr " :: " exprType ")"
                           return Any
                       Just t -> return t
-
+      (None _) -> return Any
       _ -> return Any
 
     Trace %% prettyText expr ++ " :: " ++ prettyType ret

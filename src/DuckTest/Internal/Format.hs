@@ -49,6 +49,9 @@ instance (DIsChar ch) => LogResult (DuckTest e [ch]) where
 instance (DuckShowable (Expr a)) where
     duckShow _ = return . prettyText
 
+instance (DuckShowable (Statement a)) where
+    duckShow _ = return . prettyText
+
 duckf :: (DuckShowable a, LogResult r) => a -> r
 duckf = logr
 
