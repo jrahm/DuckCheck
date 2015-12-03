@@ -36,10 +36,8 @@ inferTypeForExpression state expr = do
       (None _) -> return Any
       _ -> return Any
 
-    Trace %% prettyText expr ++ " :: " ++ prettyType ret
-    case ret of
-        Alpha _ t -> return t
-        _ -> return ret
+    Info %% prettyText expr ++ " :: " ++ prettyType (stripAlpha ret)
+    return $ stripAlpha ret
 
 
 checkCallExpression st lhs args pos = do

@@ -10,6 +10,7 @@ import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Debug.Trace
 
+import Control.Arrow
 import Control.Monad.Writer.Lazy hiding (Any)
 
 {-
@@ -228,6 +229,15 @@ data TypeError = Incompatible PyType PyType | Difference PyType PyType (Map Stri
 isVoidFunction :: PyType -> Bool
 isVoidFunction (Functional args ret) = all (isVoid . snd) (("",ret):args)
 isVoidFunction _ = False
+
+stripAlpha :: PyType -> PyType
+stripAlpha a@(Alpha {}) = stripAlpha' a
+stripAlpha (Functional args ret) = Functional (map (second stripAlpha') args) (stripAlpha' ret)
+stripAlpha (Scalar n map) = Scalar n $ Map.map stripAlpha map
+stripAlpha x = x
+
+stripAlpha' (Alpha _ a) = stripAlpha' a
+stripAlpha' x = x
 
 {- No news is good news. Check to see if t1 is smaller than t2 -}
 matchType :: PyType -> PyType -> Maybe TypeError
