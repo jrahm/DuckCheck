@@ -59,6 +59,7 @@ singleton str = Scalar Nothing . Map.singleton str
 singletonAny :: String -> PyType
 singletonAny = flip singleton Any
 
+-- union x y = trace (prettyType x ++ " u " ++ prettyType y) $ union' x y
 union = union'
 union' :: PyType -> PyType -> PyType
 union' Any _ = Any
@@ -73,9 +74,11 @@ union' (Functional args1 ret1) (Functional args2 ret2) =
 union' f@(Functional {}) t = t `union` f
 union' t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
 union' t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
-union' (Alpha _ s1) t2 = s1 `union` t2
-union' t1 (Alpha _ s1) = t1 `union` s1
+union' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ union t1 t2
+union' (Alpha _ s1) t2 = Alpha "" (union s1 t2)
+union' t1 (Alpha _ s1) = Alpha "" (union s1 t1)
 
+-- intersection x y = trace (prettyType x ++ " n " ++ prettyType y) $ intersection' x y
 intersection = intersection'
 intersection' :: PyType -> PyType -> PyType
 intersection' Any t = t
@@ -88,11 +91,11 @@ intersection' (Functional args1 ret1) (Functional args2 ret2) =
     Functional (zipWith (\(s1, t1) (_, t2) -> (s1, intersection t1 t2)) args1 args2)
                (intersection ret1 ret2)
 intersection' f@(Functional {}) t = intersection t f
-intersection' t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
-intersection' t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
-intersection' (Alpha _ s1) t2 = intersection s1 t2
-intersection' t1 (Alpha _ s1) = intersection t1 s1
+intersection' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ intersection t1 t2
+intersection' (Alpha _ t1) t2 = Alpha "" $ intersection t1 t2
+intersection' t1 (Alpha _ t2) = Alpha "" $ intersection t1 t2
 
+-- difference x y = trace (prettyType x ++ " - " ++ prettyType y) $ difference' x y
 difference = difference'
 
 difference' :: PyType -> PyType -> PyType
@@ -115,8 +118,9 @@ difference' (Functional args1 ret1) (Functional args2 ret2) =
 difference' f@(Functional {}) t = difference t f
 difference' t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
 difference' t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
-difference' (Alpha _ s1) t2 = difference s1 t2
-difference' t1 (Alpha _ s1) = difference t1 s1
+difference' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ difference t1 t2
+difference' (Alpha _ s1) t2 = Alpha "" $ difference s1 t2
+difference' t1 (Alpha _ s1) = Alpha "" $ difference t1 s1
 
 hasSameName :: PyType -> PyType -> Bool
 hasSameName (Alpha s1 _) (Alpha s2 _) | s1 == s2 = True
@@ -127,6 +131,7 @@ hasSameName _ _ = False
 isVoid :: PyType -> Bool
 isVoid Void = True
 isVoid (Scalar _ m) | Map.null m = True
+isVoid (Alpha _ t) = isVoid t
 isVoid _ = False
 
 toVoid :: PyType -> PyType
@@ -134,6 +139,8 @@ toVoid v | isVoid v = Void
 toVoid x = x
 
 isCompatibleAs :: PyType -> PyType -> Bool
+isCompatibleAs Any _ = True
+isCompatibleAs _ Any = True
 isCompatibleAs smaller larger = isVoid $ difference smaller larger
 
 getAttribute :: String -> PyType -> Maybe PyType
@@ -174,8 +181,11 @@ liftFromDotList list init = foldr singleton init list
 prettyType :: PyType -> String
 prettyType = prettyType' False
 
-prettyType' :: Bool -> PyType -> String
-prettyType' descend typ = execWriter $ prettyType' 0 typ
+prettyType' b (Alpha "" s) = "alpha " ++ prettyType'' b s
+prettyType' b t = prettyType'' b t
+
+prettyType'' :: Bool -> PyType -> String
+prettyType'' descend typ = execWriter $ prettyType' 0 typ
     where
           prettyType' indent (Scalar (Just name) s) = tell name >> when descend (tell " " >> prettyType' indent (Scalar Nothing s))
           prettyType' indent (Scalar Nothing attrs) = do
@@ -221,11 +231,14 @@ isVoidFunction _ = False
 
 {- No news is good news. Check to see if t1 is smaller than t2 -}
 matchType :: PyType -> PyType -> Maybe TypeError
+matchType Any _ = Nothing
+matchType _ Any = Nothing
 matchType t1 t2 =
     let dif = difference t1 t2 in
     if isVoid dif || isVoidFunction dif then Nothing else
         case dif of
             (Scalar _ map) -> Just (Difference t1 t2 map)
+            (Alpha _ (Scalar _ map)) -> Just (Difference t1 t2 map)
             _ -> Just (Incompatible t1 t2)
 
 setTypeName :: String -> PyType -> PyType

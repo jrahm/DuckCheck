@@ -19,7 +19,7 @@ stateToType (InternalState m _ _) = Scalar Nothing m
 
 intersectStates :: InternalState -> InternalState -> InternalState
 intersectStates (InternalState m1 r1 b1) (InternalState m2 r2 b2) =
-    InternalState (Map.intersection m1 m2) (r1 >< r2) (b1 && b2)
+    InternalState (Map.intersectionWith (><) m1 m2) (r1 >< r2) (b1 && b2)
 
 getFunctionType :: InternalState -> String -> Maybe ([PyType], PyType)
 getFunctionType st id =

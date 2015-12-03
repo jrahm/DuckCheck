@@ -11,7 +11,8 @@ initState =
     addVariableType "len" (Functional [("", fromList Nothing $ map (,Any) ["__len__"])] Any) $
     addVariableType "str" (Functional [("", fromList Nothing $ map (,Any) ["__str__"])] strType) $
     addVariableType "int" (Functional [("", Any)] intType) $
-    addVariableType "set" (Functional [] setType)
+    addVariableType "set" (Functional [] setType) $
+    addVariableType "list" (Functional [] $ listType Any)
     emptyState
 --
 -- builtinGlobalFunctions :: Map String Function
