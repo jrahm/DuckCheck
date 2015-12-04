@@ -19,8 +19,8 @@ inferTypeForExpression state expr = do
 
       (Call callexpr args pos) -> do
           exprType <- checkCallExpression state callexpr args pos
-          case exprType of
-              (Functional args ret) -> return ret
+          case getCallType exprType of
+              Just (Functional args ret) -> return ret
               _ -> return Any
 
       (Dot expr (Ident att _) pos) -> do

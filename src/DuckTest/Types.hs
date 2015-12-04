@@ -254,3 +254,9 @@ matchType t1 t2 =
 setTypeName :: String -> PyType -> PyType
 setTypeName s (Scalar _ m) = Scalar (Just s) m
 setTypeName _ t = t
+
+getCallType :: PyType -> Maybe PyType
+getCallType t@(Functional {}) = Just t
+getCallType (Scalar _ m) = Map.lookup "__call__" m
+getCallType (Alpha _ a) = getCallType a
+getCallType _ = Nothing

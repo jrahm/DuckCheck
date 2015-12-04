@@ -81,6 +81,7 @@ instance CheckerState InternalState where
                         return currentState
 
             ex@(Class {class_name = (Ident name _), class_body = body}) -> do
+                Trace %% "THIS IS A CLASS!!"
                 staticVarsState <- foldM' mempty body $ \state stmt ->
                     case stmt of
                         (Assign [Var (Ident vname _) _] ex pos) -> do
@@ -89,14 +90,25 @@ instance CheckerState InternalState where
                         _ -> return state
 
                 let staticVarType = stateToType staticVarsState
+                Trace %%! duckf "static var type " staticVarType
                 let newstate = addVariableType name staticVarType currentState
                 staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
                                       case stmt of
-                                        (Assign {}) -> Nothing
-                                        _ -> Just stmt) body
+                                        (Fun {}) -> Just stmt
+                                        _ -> Nothing) body
                 {- The static type of the class. -}
-                let staticClassType@(Scalar _ m) = staticVarType `union` stateToType staticClassState
+                let staticClassType@(Scalar _ m) = staticVarType `union` stateToType (differenceStates staticClassState newstate)
+                Trace %%! duckf "Class static type " staticClassType
                 let newstate = addVariableType name staticClassType currentState
+
+                boundType <- toBoundType name staticClassType <$> findSelfAssignments newstate body
+                Trace %%! duckf "Class bound type " boundType
+                let classFunctionalType = initType boundType
+                Trace %%! duckf "Class functional type " classFunctionalType
+                let staticClassType' = staticClassType `union` classFunctionalType
+                let newstate = addVariableType name staticClassType' currentState
+
+
 
                 return newstate
 

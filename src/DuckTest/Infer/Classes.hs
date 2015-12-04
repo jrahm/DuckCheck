@@ -1,6 +1,6 @@
 module DuckTest.Infer.Classes where
 
-import DuckTest.Internal.Common
+import DuckTest.Internal.Common hiding (union)
 
 import DuckTest.Monad
 import DuckTest.AST.Util
@@ -14,6 +14,45 @@ import DuckTest.Infer.Expression
 import DuckTest.Internal.State
 
 import Control.Arrow
+
+findSelfAssignments :: InternalState -> [Statement a] -> DuckTest a PyType
+findSelfAssignments state statements =
+    traceAssignments functionMap initFunction
+    where
+        functionMap = Map.fromList $ flip mapMaybe statements $ \stmt ->
+                        case stmt of
+                            (Fun {fun_name = (Ident name _), fun_body = body}) ->
+                                Just (name, body)
+                            _ -> Nothing
+        initFunction = Map.findWithDefault [] "__init__" functionMap
+
+        traceAssignments map stmts =
+            foldM' Void stmts  $ \typ stmt -> case stmt of
+                (Assign [(Dot (Var (Ident "self" _) _) (Ident att _) _)] ex _) -> do
+                    inferred <- inferTypeForExpression (addVariableType "self" typ state) ex
+                    return (typ `union` singleton att inferred)
+                _ -> return typ
+
+initType :: PyType -> PyType
+initType f@(Scalar _ m) =
+    let init = Map.findWithDefault (Functional [] f) "__init__" m in
+    case init of
+        (Functional args _) -> Functional args f
+        _ -> Functional [] f
+initType f = Functional [] f
+
+toBoundType :: String -> PyType -> PyType -> PyType
+toBoundType name (Scalar _ m2) selfAssign =
+    setTypeName name $
+        union selfAssign $
+            Scalar Nothing $
+                flip Map.mapMaybe m2 $
+                    \typ -> case typ of
+                             (Functional (_:as) r) -> Just (Functional as r)
+                             _ -> Nothing
+
+
+
 
 inferTypeForClass :: InternalState -> Statement a -> DuckTest a PyType
 inferTypeForClass st cls@(Class {class_body = body, class_name = (Ident clname _)})
@@ -35,7 +74,7 @@ inferTypeForClass st cls@(Class {class_body = body, class_name = (Ident clname _
               walkFunctions :: InternalState -> Statement e -> DuckTest e ([(String, PyType)], UnionType)
               walkFunctions state ex@(Fun {fun_name=(Ident name _), fun_body=body}) = do
                     fnType <- inferTypeForFunction state ex
-                    let newstate = addVariableType clname (Functional [] $ Alpha clname Any) $ stateUnderFunction fnType state
+                    let newstate = stateUnderFunction fnType state
                     (Union selfAssignments) <- mconcatMapM (Union <.< findSelfAssign newstate) (walkStatements ex)
                     return ([(name, fnType)], Union selfAssignments)
               walkFunctions _ _ = return ([], Union Void)
