@@ -3,7 +3,7 @@
 module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
                    die, fromEither, hissLiftIO, runDuckTestIO,
                    emitWarning,
-                   getWarnings,
+                   getWarnings, ignore,
                    warn, findImport, makeImport,
                    saveState, LogLevel(..), (%%), getLogLevel,
                    (%%!), runningInTerminal
@@ -139,6 +139,11 @@ fromEither e = case e of
 
 die :: String -> DuckTest e a
 die = left
+
+ignore :: DuckTest e a -> DuckTest e a
+ignore fn = do
+    before <- lift (warnings <$> get)
+    fn <* lift (modify (\s -> s {warnings = before}))
 
 makeImport :: SrcSpan ->
               [String] ->

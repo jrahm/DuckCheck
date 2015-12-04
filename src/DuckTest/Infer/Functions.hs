@@ -89,7 +89,7 @@ observeTypeForExpression state expr stmts = do
          -
          - This observation is of function(..., x, ...)-}
         observeExpr ex@(Call callex args _) = do
-                 calltyp <- inferTypeForExpression state callex
+                 calltyp <- ignore $ inferTypeForExpression state callex
                  maybe' (getCallType calltyp) (iterateOverChildren ex) $
                     \typ -> case typ of
                         (Functional paramsType  _) -> do
