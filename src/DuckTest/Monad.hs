@@ -1,41 +1,46 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-module DuckTest.Monad (DuckTest, runDuckTest, hlog, isVersion2, hasFlag,
-                   die, fromEither, hissLiftIO, runDuckTestIO,
-                   emitWarning,
-                   getWarnings, ignore,
-                   warn, findImport, makeImport,
-                   saveState, LogLevel(..), (%%), getLogLevel,
+
+{-|
+  A module dedicated to the DuckTest monad. While this monad does use
+  IO in the background, it is a attempted to encapsulate any IO the system
+  will need.
+
+  The DuckTest monad is an application level monad. Most all of the rest
+  of the program operates under it, if operating under a monad at all.
+
+  The monad is primarily responsible for keeping track of the flags passed
+  to the executable as well as the warnings that are emitted.
+ -}
+module DuckTest.Monad (DuckTest, DuckTestState, runDuckTest, hlog, isVersion2, hasFlag,
+                   die, fromEither, runDuckTestIO, dtReadFile,
+                   emitWarning, getWarnings, ignore, warn, findImport, makeImport,
+                   LogLevel(..), (%%), getLogLevel,
                    (%%!), runningInTerminal
                    ) where
 
-import System.Posix.Terminal
-import System.Posix.Types
-import System.FilePath
-import System.Directory
-import DuckTest.Internal.Common
-import DuckTest.AST.Preprocess
-
 import Control.Monad.IO.Class
-import Control.Monad.Trans.State.Lazy
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Either
-
-import DuckTest.Flags
-
-import qualified Data.Set as Set
-import qualified Data.Map as Map
-
-import System.IO
-import System.Exit (exitWith, ExitCode(ExitFailure))
-
-import DuckTest.Types
+import Control.Monad.Trans.State.Lazy
+import DuckTest.AST.Preprocess
 import DuckTest.Builtins
+import DuckTest.Flags
+import DuckTest.Internal.Common
+import DuckTest.Types
+import System.Directory
+import System.Exit (exitWith, ExitCode(ExitFailure))
+import System.FilePath
+import System.IO
+import System.Posix.Terminal
+import System.Posix.Types
 
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 data DuckTestState e = DuckTestState {
       flags :: Set Flag    -- command line flags
-    , log_level :: LogLevel
+    , logLevel :: LogLevel
 
     {- Warning collection list. For printing them out
      - at the end -}
@@ -49,8 +54,13 @@ data DuckTestState e = DuckTestState {
 
 type DuckTest e = EitherT String (StateT (DuckTestState e) IO)
 
+dtReadFile :: FilePath -> DuckTest e String
+{-| Read a file under the DuckTest monad. -}
+dtReadFile = hissLiftIO . readFile
+
 getLogLevel :: DuckTest e LogLevel
-getLogLevel = lift (log_level <$> get)
+{-| Returns the log level of the application. -}
+getLogLevel = lift (logLevel <$> get)
 
 getFirst :: (Monad m) => [a] -> (a -> m Bool) -> m (Maybe a)
 getFirst (a:xs) f = do
@@ -60,6 +70,8 @@ getFirst (a:xs) f = do
 getFirst [] _ = return Nothing
 
 findImport :: [String] -> DuckTest e (Maybe FilePath)
+{-| Try to find the filepath to the import given. The
+    string list is a dotted identifier list. -}
 findImport dotted = do
     let relativePath = intercalate "/" dotted
     let sitepath = ["", "/usr/lib/python3.5"]
@@ -70,15 +82,8 @@ findImport dotted = do
        Trace %% "Try import file: " ++ path
        hissLiftIO $ doesFileExist path
 
-saveState :: DuckTest e a -> DuckTest e a
-saveState fn = do
-    st <- lift get
-    ret <- fn
-    st' <- lift get
-    lift $ put $ st {warnings = warnings st'}
-    return ret
-
 getWarnings :: DuckTestState e -> [(String, e)]
+{-| Get all the warnings from a state. -}
 getWarnings = warnings
 
 
@@ -90,6 +95,8 @@ emptyDuckTestState flags ll term = DuckTestState flags ll mempty term $
     Map.singleton ["sys"] sysType
 
 runDuckTest :: Set Flag -> LogLevel -> DuckTest e a -> IO (Either String a)
+{-| Run something under the duck test monad given the set of command
+ - line flags and the level to log at. -}
 runDuckTest flags ll fn = do
     isTerm <- queryTerminal (Fd 1)
     evalStateT (runEitherT fn) (emptyDuckTestState flags ll isTerm)
@@ -110,15 +117,15 @@ emitWarning str e = do
     Trace %% "Warning emitted: " ++ str
     lift (modify $ \hs -> hs {warnings = (str, e):warnings hs})
 
-warn :: e -> (DuckTest e String) -> DuckTest e ()
-warn pos mstr = mstr >>= (\str -> emitWarning str pos)
+warn :: e -> DuckTest e String -> DuckTest e ()
+warn pos mstr = mstr >>= (`emitWarning`pos)
 
 hlog :: String -> DuckTest e ()
 hlog str = lift $ lift $ putStrLn str
 
 (%%) :: LogLevel -> String -> DuckTest e ()
 (%%) ll str = do
-    level <- log_level <$> lift get
+    level <- logLevel <$> lift get
     when (ll >= level) $
         forM_ (lines str) $ \line ->
             hlog $ printf "[%s] - %s" (show ll) line
@@ -141,6 +148,8 @@ die :: String -> DuckTest e a
 die = left
 
 ignore :: DuckTest e a -> DuckTest e a
+{-| Run the function fn, but ignore all warnings emitted from
+ - that function. -}
 ignore fn = do
     before <- lift (warnings <$> get)
     fn <* lift (modify (\s -> s {warnings = before}))

@@ -19,6 +19,7 @@ import DuckTest.Monad
 import DuckTest.AST.Preprocess
 import DuckTest.Builtins
 import DuckTest.Parse
+import DuckTest.Internal.State.Instance
 
 runDuckTestM :: FilePath -> DuckTest SrcSpan ()
 runDuckTestM fp =
@@ -44,6 +45,6 @@ runDuckTestOnOneFile flags ll file = do
     let (styleBegin, styleEnd) =
             if isTerm then ("\x1b[01;31m", "\x1b[0m") else ("", "")
 
-    forM_ (getWarnings st) $ \(err, pos) ->
+    forM_ (sort $ getWarnings st) $ \(err, pos) ->
         whenJust (getStartPos pos) $ \(f, r, c) ->
             hPutStr stderr $ printf "%s%s(%d:%d):%s %s\n" styleBegin f r c styleEnd err

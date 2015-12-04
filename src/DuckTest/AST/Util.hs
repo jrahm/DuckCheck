@@ -111,7 +111,7 @@ instance HasExpressions Expr where
             BinaryOp nam e1 e2 pos -> BinaryOp nam <$> f e1 <*> f e2 <*> pure pos
             UnaryOp name e1 pos -> UnaryOp name <$> f e1 <*> pure pos
             Lambda param body pos -> Lambda param <$> f body <*> pure pos
-            Tuple exprs pos -> Tuple <$> (mapM f exprs) <*> pure pos
+            Tuple exprs pos -> Tuple <$> mapM f exprs <*> pure pos
             Yield (Just (YieldFrom expr p)) pos -> (\e -> Yield (Just (YieldFrom e p)) pos) <$> f expr
             Yield (Just (YieldExpr expr)) pos -> (\e -> Yield (Just (YieldExpr e)) pos) <$> f expr
 
@@ -250,10 +250,10 @@ instance HasExpressions Statement where
 walkStatements :: Statement a -> [Statement a]
 walkStatements stmt =
     case stmt of
-        (Fun {fun_body = body}) -> stmt : concatMap walkStatements body
-        (Class {class_body = body}) -> stmt : concatMap walkStatements body
-        (While {while_body = body}) -> stmt : concatMap walkStatements body
-        (For {for_body = body, for_else = el}) -> stmt : concatMap walkStatements body ++ concatMap walkStatements el
+        Fun {fun_body = body} -> stmt : concatMap walkStatements body
+        Class {class_body = body} -> stmt : concatMap walkStatements body
+        While {while_body = body} -> stmt : concatMap walkStatements body
+        For {for_body = body, for_else = el} -> stmt : concatMap walkStatements body ++ concatMap walkStatements el
         _ -> return stmt -- todo add more
 
 class HasIdentifier a where
@@ -279,6 +279,9 @@ instance HasIdentifier (Parameter a) where
             VarArgsPos (Ident n _) _ _ -> Just n
             VarArgsKeyword (Ident n _) _ _ -> Just n
             _ -> Nothing
+
+instance HasIdentifier (Ident a) where
+    getIdentifier (Ident n _) = Just n
 
 tryGetIdentifier :: (HasIdentifier a) => String -> a -> String
 tryGetIdentifier str = fromMaybe str . getIdentifier

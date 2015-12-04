@@ -1,133 +1,28 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE BangPatterns #-}
-{- Module with the checker and iterate functions -}
+
+{-| This mondule is all about checking the python syntax tree
+    for potential problems. It really is at the heart of DuckTest
+    as it is what is actually doing the checking -}
 
 module DuckTest.Checker where
 
-import qualified Data.Map as Map
 import DuckTest.Internal.Common hiding (union)
-import DuckTest.Internal.State
 import DuckTest.Internal.Format
-
 import DuckTest.Monad
-import DuckTest.Infer.Functions
-import DuckTest.Infer.Expression
-import DuckTest.Infer.Classes
-import DuckTest.Types
-import DuckTest.MonadHelper
-
-import DuckTest.AST.Util
-import DuckTest.Parse
-
-import DuckTest.Builtins
 
 class CheckerState s where
-    {- The function used in a monadic fold across a list of
-     - statements -}
+    {-| The function used in a monadic fold across a list of
+        statements -}
     foldFunction :: s -> Statement SrcSpan -> DuckTest SrcSpan s
 
 runChecker :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan s
+{-| Run a checker under some state s and return the resulting state
+ - after the fold across the expressions. -}
 runChecker init stmts = do
     Trace %%! duckf "Running checker on stmts"
     forM_ stmts $ \s -> Trace %%! duckf s
     foldM foldFunction init stmts
 
 runChecker_ :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan ()
+{-| Like the above, but ignore the results -}
 runChecker_ a = void . runChecker a
-
-instance CheckerState InternalState where
-    foldFunction currentState statement = do
-        Trace %%! duckf "check: " statement
-
-        when (returnHit currentState) $
-            warn (annot statement) $ duckf "Dead code"
-
-        case statement of
-
-            (Import [ImportItem dotted@(_:_) as pos] _) -> do
-                let dottedpaths@(h:t) = map (\(Ident name _) -> name) dotted
-
-                modType <- makeImport pos dottedpaths parsePython $ \stmts ->
-                    stateToType <$> runChecker initState stmts
-
-                maybe' modType (return currentState) $ \a -> do
-                    Debug %%! duckf "Module " h " :: " a
-                    case as of
-                        Nothing ->
-                            return $ addVariableType h (liftFromDotList t a) currentState
-                        Just (Ident name _) ->
-                            return $ addVariableType name a currentState
-
-            (Return expr pos) ->
-                if returnHit currentState then
-                    return currentState
-                    else do
-                    inferred <- maybe' expr (return Void) (inferTypeForExpression currentState)
-                    return (setReturnType inferred currentState)
-
-            (Fun {fun_name = (Ident name _), fun_body = body}) -> do
-                {- For functions, we infer the type and recursively check the
-                 - function body for errors. -}
-                 !functionInferredType <- inferTypeForFunction currentState statement
-                 let newstate = addVariableType name functionInferredType currentState
-                 case functionInferredType of
-                    (Functional args _) -> do
-                       ret <- getReturnType <$> runChecker (addAll args newstate) body
-                       let newfntype = Functional args ret
-                       Info %%! duckf "\n(Inferred) " name " :: " newfntype "\n"
-                       return $ addVariableType name newfntype currentState
-                    _ -> do
-                        Warn %% "This should not happen, infer type of function returned a type that isn't a function."
-                        return currentState
-
-            ex@(Class (Ident name _) [] body pos) -> do
-                Trace %% "THIS IS A CLASS!!"
-                staticVarsState <- foldM' mempty body $ \state stmt ->
-                    case stmt of
-                        (Assign [Var (Ident vname _) _] ex pos) -> do
-                             inferredType <- inferTypeForExpression currentState ex
-                             return $ addVariableType vname inferredType state
-                        _ -> return state
-
-                let staticVarType = stateToType staticVarsState
-                Trace %%! duckf "static var type " staticVarType
-                let newstate = addVariableType name staticVarType currentState
-                staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
-                                      case stmt of
-                                        (Fun {}) -> Just stmt
-                                        _ -> Nothing) body
-                {- The static type of the class. -}
-                let staticClassType@(Scalar _ m) = staticVarType `union` stateToType (differenceStates staticClassState newstate)
-                Trace %%! duckf "Class static type " staticClassType
-                let newstate = addVariableType name staticClassType currentState
-
-                boundType <- toBoundType name staticClassType <$> findSelfAssignments newstate body
-                Info %%! duckf "Class bound type " boundType
-                let classFunctionalType = initType boundType
-                Trace %%! duckf "Class functional type " classFunctionalType
-                let staticClassType' = staticClassType `union` classFunctionalType
-                let newstate = addVariableType name staticClassType' currentState
-
-                matchBoundWithStatic pos boundType staticClassType'
-
-                return newstate
-
-
-            (Assign [Var (Ident vname _) _] ex pos) -> do
-                inferredType <- inferTypeForExpression currentState ex
-                when (isVoid inferredType) $
-                    warn pos $ duckf "Void type not ignored as it ought to be!"
-                return $ addVariableType vname inferredType currentState
-
-            (Conditional {cond_guards=guards, cond_else=elsebody}) -> do
-                endStates <- forM guards $ \(expr, stmts) -> do
-                              _ <- inferTypeForExpression currentState expr
-                              runChecker currentState stmts
-
-                elseState <- runChecker currentState elsebody
-                let intersect = foldl intersectStates elseState endStates
-                return intersect
-
-            _ -> do
-                 mapM_ (inferTypeForExpression currentState) (subExpressions statement)
-                 return currentState
