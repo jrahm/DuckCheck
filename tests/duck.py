@@ -1,8 +1,10 @@
 class Duck:
     def __init__(self):
+        self.x = 3
         print("I love ducks!")
 
     def walk(self):
+        print(self.x)
         print("I walk like a duck")
 
     def quack(self):

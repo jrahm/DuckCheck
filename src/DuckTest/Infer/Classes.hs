@@ -16,6 +16,7 @@ import DuckTest.Internal.State
 import DuckTest.Internal.Format
 
 import Control.Arrow
+import Debug.Trace
 
 findSelfAssignments :: InternalState -> [Statement a] -> DuckTest a PyType
 findSelfAssignments state statements =
@@ -54,13 +55,15 @@ matchBoundWithStatic pos bound (Scalar _ m) =
 
 toBoundType :: String -> PyType -> PyType -> PyType
 toBoundType name (Scalar _ m2) selfAssign =
-    setTypeName name $
-        union selfAssign $
-            Scalar Nothing $
-                flip Map.mapMaybe m2 $
-                    \typ -> case typ of
-                             (Functional (_:as) r) -> Just (Functional as r)
-                             _ -> Nothing
+    let boundFns = Scalar Nothing $
+                    flip Map.mapMaybe m2 $
+                        \typ -> case typ of
+                                 (Functional (_:as) r) -> Just (Functional as r)
+                                 _ -> Nothing
+        attrs = union selfAssign boundFns
+        in
+
+    attrs
 
 
 

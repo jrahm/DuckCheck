@@ -102,7 +102,7 @@ instance CheckerState InternalState where
                 let newstate = addVariableType name staticClassType currentState
 
                 boundType <- toBoundType name staticClassType <$> findSelfAssignments newstate body
-                Trace %%! duckf "Class bound type " boundType
+                Info %%! duckf "Class bound type " boundType
                 let classFunctionalType = initType boundType
                 Trace %%! duckf "Class functional type " classFunctionalType
                 let staticClassType' = staticClassType `union` classFunctionalType

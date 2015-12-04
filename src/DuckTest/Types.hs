@@ -79,8 +79,8 @@ union' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ union t1 t2
 union' (Alpha _ s1) t2 = Alpha "" (union s1 t2)
 union' t1 (Alpha _ s1) = Alpha "" (union s1 t1)
 
-intersection x y = trace (prettyType x ++ " n " ++ prettyType y) $ intersection' x y
--- intersection = intersection'
+-- intersection x y = trace (prettyType x ++ " n " ++ prettyType y) $ intersection' x y
+intersection = intersection'
 intersection' :: PyType -> PyType -> PyType
 intersection' Any t = t
 intersection' t Any = t
@@ -125,6 +125,8 @@ difference' dif t1 (Alpha _ s1) = Alpha "" $ dif t1 s1
 
 difference2 (Alpha {}) _ = Void
 difference2 _ (Alpha {}) = Void
+difference2 Any _ = Void
+difference2 _ Any = Void
 difference2 t1 t2 = difference' difference2 t1 t2
 
 hasSameName :: PyType -> PyType -> Bool
@@ -134,19 +136,26 @@ hasSameName (Scalar (Just s2) _) (Alpha s1 _) | s1 == s2 = True
 hasSameName _ _ = False
 
 isVoid :: PyType -> Bool
-isVoid Void = True
-isVoid (Scalar _ m) | Map.null m = True
-isVoid (Alpha _ t) = isVoid t
-isVoid _ = False
+isVoid t = case t of
+    (Alpha _ t') -> isVoid' t'
+    _ -> isVoid' t
+    where
+        isVoid' Void = True
+        isVoid' (Scalar _ m) | Map.null m = True
+        isVoid' (Alpha _ _) = True
+        isVoid' _ = False
 
 toVoid :: PyType -> PyType
 toVoid v | isVoid v = Void
 toVoid x = x
 
 isCompatibleAs :: PyType -> PyType -> Bool
-isCompatibleAs Any _ = True
-isCompatibleAs _ Any = True
-isCompatibleAs smaller larger = isVoid $ difference smaller larger
+isCompatibleAs smaller = isVoid . isCompatibleAs' smaller
+
+isCompatibleAs' :: PyType -> PyType -> PyType
+isCompatibleAs' Any _ = Void
+isCompatibleAs' _ Any = Void
+isCompatibleAs' smaller larger = difference2 smaller larger
 
 getAttribute :: String -> PyType -> Maybe PyType
 getAttribute att (Scalar _ map) = Map.lookup att map
@@ -245,13 +254,9 @@ stripAlpha' x = x
 
 {- No news is good news. Check to see if t1 is smaller than t2 -}
 matchType :: PyType -> PyType -> Maybe TypeError
-matchType Any _ = Nothing
-matchType _ Any = Nothing
-matchType t1' t2' =
-    let (t1, t2) = (stripAlpha t1', stripAlpha t2')
-        dif = difference2 t1 t2 in
-    if isVoid dif || isVoidFunction dif then Nothing else
-        case dif of
+matchType t1 t2 =
+        case isCompatibleAs' t1 t2 of
+            t | isVoid t -> Nothing
             (Scalar _ map) -> Just (Difference t1 t2 map)
             (Alpha _ (Scalar _ map)) -> Just (Difference t1 t2 map)
             _ -> Just (Incompatible t1 t2)
