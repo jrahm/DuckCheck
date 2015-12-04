@@ -25,7 +25,7 @@ handleImport :: InternalState -> (String, [String]) -> Maybe String -> SrcSpan -
  - on the DuckTest monad to pull in the correct module into its
  - state. We then check the module and lift it into its own object-}
 handleImport state (h, t) as pos =  do
-    modType <- makeImport pos (h:t) parsePython $ \stmts ->
+    modType <- ignore $ makeImport pos (h:t) parsePython $ \stmts ->
         stateToType <$> runChecker initState stmts
 
     maybe' modType (return state) $ \a -> do
@@ -67,6 +67,24 @@ handleFunction state fun@Fun {fun_name = (Ident name _), fun_body=body} = do
            Warn %% "This should not happen, infer type of function returned a type that isn't a function."
            return state
 handleFunction state _ = return state
+
+handleForLoop :: InternalState -> [Expr SrcSpan] -> Expr SrcSpan -> [Statement SrcSpan] -> [Statement SrcSpan] -> SrcSpan -> DuckTest SrcSpan InternalState
+handleForLoop state targets generator body elsebody pos = do
+    generatorVariableType <-
+        inferTypeForExpression state
+            -- <generator>.__iter__().__next__()
+            (Call (Dot (Call (Dot generator (Ident "__iter__" pos) pos) [] pos) (Ident "__next__" pos) pos) [] pos)
+
+    let newVariables = flip mapMaybe targets $ \target ->
+                          case target of
+                            (Var (Ident name _) _) ->
+                                Just (name, generatorVariableType)
+                            _ -> Nothing
+
+    let forLoopInitState = addAll newVariables state
+    afterForLoopState <- runChecker forLoopInitState body
+    afterElseState <- runChecker state elsebody
+    return $ intersectStates afterForLoopState afterElseState
 
 
 handleClass :: InternalState -> String -> [Statement SrcSpan] -> SrcSpan -> DuckTest SrcSpan InternalState
@@ -165,6 +183,9 @@ instance CheckerState InternalState where
 
             Conditional {cond_guards=guards, cond_else=elsebody} ->
                 handleConditional currentState guards elsebody
+
+            (For targets generators body elsebody pos) ->
+                handleForLoop currentState targets generators body elsebody pos
 
             _ -> do
                  mapM_ (inferTypeForExpression currentState) (subExpressions statement)

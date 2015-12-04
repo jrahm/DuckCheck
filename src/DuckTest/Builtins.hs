@@ -149,7 +149,6 @@ sysAttrs =
         [("platform", strType),
          ("argv", listType strType)]
 
-
 listAttrs :: PyType -> [(String, PyType)]
 listAttrs _T =
     map (,Any)
@@ -168,5 +167,8 @@ listAttrs _T =
     `mappend`
         [ ("__add__", Functional [("arg0", mkAlpha $ listType _T)] (mkAlpha $ listType _T))
         , ("append", Functional [("arg0", _T)] Void)
+        , ("__iter__", Functional [] (basicIteratorType _T))
         ]
 
+basicIteratorType :: PyType -> PyType
+basicIteratorType _T = fromList Nothing [("__next__", Functional [] _T)]
