@@ -67,17 +67,22 @@ union' Any _ = Any
 union' _ Any = Any
 union' t Void = t
 union' Void t = t
-union' (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.unionWith union m1 m2
-union' sc@(Scalar {}) f@(Functional {}) = sc `union` singleton "__call__" f
+union' (Scalar s1 m1) (Scalar s2 m2) = Scalar (unionStr s1 s2) $ Map.unionWith union m1 m2
+    where
+        unionStr Nothing Nothing = Nothing
+        unionStr s1 s2 | s1 == s2 = s1
+        unionStr s1 s2 = Just $ printf "(%s)&(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
+
+union' sc@Scalar {} f@Functional {} = sc `union` singleton "__call__" f
 union' (Functional args1 ret1) (Functional args2 ret2) =
-    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, union t1 t2)) args1 args2)
-               (union ret1 ret2)
-union' f@(Functional {}) t = t `union` f
-union' t1@(Alpha {}) t2 | hasSameName t1 t2 = t1
-union' t1 t2@(Alpha {}) | hasSameName t1 t2 = t2
+    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
+               (ret1 `union` ret2)
+union' f@Functional {} t = t `union` f
+union' t1@Alpha {} t2 | hasSameName t1 t2 = t1
+union' t1 t2@Alpha {} | hasSameName t1 t2 = t2
 union' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ union t1 t2
-union' (Alpha _ s1) t2 = Alpha "" (union s1 t2)
-union' t1 (Alpha _ s1) = Alpha "" (union s1 t1)
+union' (Alpha _ s1) t2 = Alpha "" (s1 `union` t2)
+union' t1 (Alpha _ s1) = Alpha "" (s1 `union` t1)
 
 -- intersection x y = trace (prettyType x ++ " n " ++ prettyType y) $ intersection' x y
 intersection = intersection'
@@ -86,12 +91,16 @@ intersection' Any t = t
 intersection' t Any = t
 intersection' Void _ = Void
 intersection' _ Void = Void
-intersection' (Scalar _ m1) (Scalar _ m2) = Scalar Nothing $ Map.intersectionWith intersection m1 m2
-intersection' sc@(Scalar {}) f@(Functional {}) = intersection sc (singleton "__call__" f)
+intersection' (Scalar s1 m1) (Scalar s2 m2) = Scalar (interStr s1 s2) $ Map.intersectionWith intersection m1 m2
+    where
+        interStr Nothing Nothing = Nothing
+        interStr s1 s2 | s1 == s2 = s1
+        interStr s1 s2 = Just $ printf "(%s)|(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
+intersection' sc@Scalar {} f@Functional {} = intersection sc (singleton "__call__" f)
 intersection' (Functional args1 ret1) (Functional args2 ret2) =
-    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, intersection t1 t2)) args1 args2)
+    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
                (intersection ret1 ret2)
-intersection' f@(Functional {}) t = intersection t f
+intersection' f@Functional {} t = intersection t f
 intersection' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ intersection t1 t2
 intersection' (Alpha _ t1) t2 = Alpha "" $ intersection t1 t2
 intersection' t1 (Alpha _ t2) = Alpha "" $ intersection t1 t2
@@ -110,21 +119,21 @@ difference' dif (Scalar _ m1) (Scalar _ m2) =
     where
         fn t1 t2 = if isVoid (dif t1 t2) then
                     Nothing else Just (dif t1 t2)
-difference' dif sc@(Scalar {}) f@(Functional {}) = dif sc (singleton "__call__" f)
+difference' dif sc@Scalar {} f@Functional {} = dif sc (singleton "__call__" f)
 difference' dif (Functional args1 ret1) (Functional args2 ret2) =
     let almost = Functional (zipWith (\(s1, t1) (_, t2) -> (s1, dif t1 t2)) args1 args2)
                     (dif ret1 ret2)
                     in if isVoidFunction almost then Void else almost
 
-difference' dif f@(Functional {}) t = dif t f
-difference' dif t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
-difference' dif t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
+difference' dif f@Functional {} t = dif t f
+difference' dif t1@Alpha {} t2 | hasSameName t1 t2 = Void
+difference' dif t1 t2@Alpha {} | hasSameName t1 t2 = Void
 difference' dif (Alpha _ t1) (Alpha _ t2) = Alpha "" $ dif t1 t2
 difference' dif (Alpha _ s1) t2 = Alpha "" $ dif s1 t2
 difference' dif t1 (Alpha _ s1) = Alpha "" $ dif t1 s1
 
-difference2 (Alpha {}) _ = Void
-difference2 _ (Alpha {}) = Void
+difference2 Alpha {} _ = Void
+difference2 _ Alpha {} = Void
 difference2 Any _ = Void
 difference2 _ Any = Void
 difference2 t1 t2 = difference' difference2 t1 t2
@@ -159,7 +168,7 @@ isCompatibleAs' smaller larger = difference2 smaller larger
 
 getAttribute :: String -> PyType -> Maybe PyType
 getAttribute att (Scalar _ map) = Map.lookup att map
-getAttribute "__call__" f@(Functional {}) = Just f
+getAttribute "__call__" f@Functional {} = Just f
 getAttribute att (Alpha _ t) = getAttribute att t
 getAttribute _ _ = Nothing
 
@@ -244,8 +253,8 @@ isVoidFunction (Functional args ret) = all (isVoid . snd) (("",ret):args)
 isVoidFunction _ = False
 
 stripAlpha :: PyType -> PyType
-stripAlpha a@(Alpha {}) = stripAlpha' a
-stripAlpha (Functional args ret) = Functional (map (second stripAlpha') args) (stripAlpha' ret)
+stripAlpha a@Alpha {} = stripAlpha' a
+stripAlpha (Functional args ret) = Functional (map (second stripAlpha) args) (stripAlpha ret)
 stripAlpha (Scalar n map) = Scalar n $ Map.map stripAlpha map
 stripAlpha x = x
 
@@ -266,7 +275,7 @@ setTypeName s (Scalar _ m) = Scalar (Just s) m
 setTypeName _ t = t
 
 getCallType :: PyType -> Maybe PyType
-getCallType t@(Functional {}) = Just t
+getCallType t@Functional {} = Just t
 getCallType (Scalar _ m) = Map.lookup "__call__" m
 getCallType (Alpha _ a) = getCallType a
 getCallType _ = Nothing

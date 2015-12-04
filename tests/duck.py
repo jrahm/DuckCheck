@@ -1,11 +1,11 @@
 class Duck:
     def __init__(self):
-        self.x = 3
+        self.x = "Imma string"
         print("I love ducks!")
 
     def walk(self):
-        print(self.x)
         print("I walk like a duck")
+        return ("hello" + self.x)
 
     def quack(self):
         print("I say quack")

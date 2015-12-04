@@ -37,7 +37,7 @@ inferTypeForExpression state expr = do
       (None _) -> return Any
       _ -> return Any
 
-    Debug %% prettyText expr ++ " :: " ++ prettyType (stripAlpha ret)
+    Debug %%! duckf expr " :: " (stripAlpha ret)
     return $ stripAlpha ret
 
 
