@@ -14,6 +14,10 @@ instance Monoid InternalState where
     mappend (InternalState m1 ret1 b1) (InternalState m2 ret2 b2) =
             InternalState (mappend m1 m2) (ret1 >< ret2) (b1 && b2)
 
+differenceStates :: InternalState -> InternalState -> InternalState
+differenceStates (InternalState m a b) (InternalState m1 _ _) =
+    InternalState (Map.difference m m1) a b
+
 stateToType :: InternalState -> PyType
 stateToType (InternalState m _ _) = Scalar Nothing m
 

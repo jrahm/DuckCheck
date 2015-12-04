@@ -5,7 +5,7 @@
 module DuckTest.Checker where
 
 import qualified Data.Map as Map
-import DuckTest.Internal.Common
+import DuckTest.Internal.Common hiding (union)
 import DuckTest.Internal.State
 import DuckTest.Internal.Format
 
@@ -80,11 +80,26 @@ instance CheckerState InternalState where
                         Warn %% "This should not happen, infer type of function returned a type that isn't a function."
                         return currentState
 
-            (Class {class_name = (Ident name _), class_body = body}) -> do
-                classFunctionalType <- inferTypeForClass currentState statement
-                Debug %%! duckf "Class added and has type :: " classFunctionalType
-                let newstate = addVariableType name classFunctionalType currentState
+            ex@(Class {class_name = (Ident name _), class_body = body}) -> do
+                staticVarsState <- foldM' mempty body $ \state stmt ->
+                    case stmt of
+                        (Assign [Var (Ident vname _) _] ex pos) -> do
+                             inferredType <- inferTypeForExpression currentState ex
+                             return $ addVariableType vname inferredType state
+                        _ -> return state
+
+                let staticVarType = stateToType staticVarsState
+                let newstate = addVariableType name staticVarType currentState
+                staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
+                                      case stmt of
+                                        (Assign {}) -> Nothing
+                                        _ -> Just stmt) body
+                {- The static type of the class. -}
+                let staticClassType@(Scalar _ m) = staticVarType `union` stateToType staticClassState
+                let newstate = addVariableType name staticClassType currentState
+
                 return newstate
+
 
             (Assign [Var (Ident vname _) _] ex pos) -> do
                 inferredType <- inferTypeForExpression currentState ex
