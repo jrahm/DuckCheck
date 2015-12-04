@@ -247,8 +247,9 @@ stripAlpha' x = x
 matchType :: PyType -> PyType -> Maybe TypeError
 matchType Any _ = Nothing
 matchType _ Any = Nothing
-matchType t1 t2 =
-    let dif = difference2 t1 t2 in
+matchType t1' t2' =
+    let (t1, t2) = (stripAlpha t1', stripAlpha t2')
+        dif = difference2 t1 t2 in
     if isVoid dif || isVoidFunction dif then Nothing else
         case dif of
             (Scalar _ map) -> Just (Difference t1 t2 map)

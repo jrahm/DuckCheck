@@ -3,6 +3,7 @@ module DuckTest.Infer.Classes where
 import DuckTest.Internal.Common hiding (union)
 
 import DuckTest.Monad
+import DuckTest.MonadHelper
 import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
 import DuckTest.Types
@@ -12,6 +13,7 @@ import qualified Data.Map as Map
 import DuckTest.Infer.Functions
 import DuckTest.Infer.Expression
 import DuckTest.Internal.State
+import DuckTest.Internal.Format
 
 import Control.Arrow
 
@@ -28,7 +30,7 @@ findSelfAssignments state statements =
 
         traceAssignments map stmts =
             foldM' Void stmts  $ \typ stmt -> case stmt of
-                (Assign [(Dot (Var (Ident "self" _) _) (Ident att _) _)] ex _) -> do
+                (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] ex _) -> do
                     inferred <- inferTypeForExpression (addVariableType "self" typ state) ex
                     return (typ `union` singleton att inferred)
                 _ -> return typ
@@ -40,6 +42,15 @@ initType f@(Scalar _ m) =
         (Functional args _) -> Functional args f
         _ -> Functional [] f
 initType f = Functional [] f
+
+matchBoundWithStatic :: e -> PyType -> PyType -> DuckTest e ()
+matchBoundWithStatic pos bound (Scalar _ m) =
+    forM_ (map snd $ Map.toList m) $ \typ ->
+        case typ of
+            (Functional ((_, self):_) _) ->
+                whenJust (matchType self bound)
+                    (warnTypeError pos)
+            _ -> return ()
 
 toBoundType :: String -> PyType -> PyType -> PyType
 toBoundType name (Scalar _ m2) selfAssign =

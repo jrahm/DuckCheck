@@ -80,7 +80,7 @@ instance CheckerState InternalState where
                         Warn %% "This should not happen, infer type of function returned a type that isn't a function."
                         return currentState
 
-            ex@(Class {class_name = (Ident name _), class_body = body}) -> do
+            ex@(Class (Ident name _) [] body pos) -> do
                 Trace %% "THIS IS A CLASS!!"
                 staticVarsState <- foldM' mempty body $ \state stmt ->
                     case stmt of
@@ -108,7 +108,7 @@ instance CheckerState InternalState where
                 let staticClassType' = staticClassType `union` classFunctionalType
                 let newstate = addVariableType name staticClassType' currentState
 
-
+                matchBoundWithStatic pos boundType staticClassType'
 
                 return newstate
 
