@@ -75,7 +75,7 @@ union' (Scalar s1 m1) (Scalar s2 m2) = Scalar (unionStr s1 s2) $ Map.unionWith u
 
 union' sc@Scalar {} f@Functional {} = sc `union` singleton "__call__" f
 union' (Functional args1 ret1) (Functional args2 ret2) =
-    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
+    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `intersection` t2)) args1 args2)
                (ret1 `union` ret2)
 union' f@Functional {} t = t `union` f
 union' t1@Alpha {} t2 | hasSameName t1 t2 = t1
