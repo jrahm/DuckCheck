@@ -24,6 +24,7 @@ import DuckTest.AST.BinaryOperators
 import DuckTest.Types
 import DuckTest.Internal.State
 import DuckTest.Internal.Format
+import DuckTest.Infer.Expression
 
 import Debug.Trace
 
@@ -87,27 +88,28 @@ observeTypeForExpression state expr stmts = do
          - look up what `x` requires for this function to be valid.
          -
          - This observation is of function(..., x, ...)-}
-        observeExpr ex@(Call (Var (Ident fnname _) pos) args _) =
-                 maybe' (getFunctionType state fnname) (iterateOverChildren ex) $
-                    \(paramsType, _) -> do
+        observeExpr ex@(Call callex args _) = do
+                 calltyp <- inferTypeForExpression state callex
+                 maybe' (getCallType calltyp) (iterateOverChildren ex) $
+                    \typ -> case typ of
+                        (Functional paramsType  _) -> do
 
-                        when (length args > length paramsType) $
-                            emitWarning ("Possible too many arguments for " ++ fnname) pos
+                            let inferTypeFromArguments (expr', exprType) =
+                                    {- Iterate through the arguments to the observed
+                                     - function call. If the name alone is observed,
+                                     - then use infer the type for the argument, otherwise
+                                     - search for evidence in the expression -}
+                                    case getExpression expr' of
 
-                        let inferTypeFromArguments (expr', exprType) =
-                                {- Iterate through the arguments to the observed
-                                 - function call. If the name alone is observed,
-                                 - then use infer the type for the argument, otherwise
-                                 - search for evidence in the expression -}
-                                case getExpression expr' of
-
-                                    ex | ex `exprEq` expr  ->
-                                        return exprType
+                                        ex | ex `exprEq` expr  ->
+                                            return exprType
 
 
-                                    ex -> observeExpr ex
+                                        ex -> observeExpr ex
 
-                        unwrap <$> mconcatMapM (Union <.< inferTypeFromArguments) (zip args paramsType)
+                            unwrap <$> mconcatMapM (Union <.< inferTypeFromArguments) (zip args $ map snd paramsType)
+
+                        _ -> return Void
 
         observeExpr exp = iterateOverChildren exp
 

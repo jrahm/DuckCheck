@@ -79,8 +79,8 @@ union' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ union t1 t2
 union' (Alpha _ s1) t2 = Alpha "" (union s1 t2)
 union' t1 (Alpha _ s1) = Alpha "" (union s1 t1)
 
--- intersection x y = trace (prettyType x ++ " n " ++ prettyType y) $ intersection' x y
-intersection = intersection'
+intersection x y = trace (prettyType x ++ " n " ++ prettyType y) $ intersection' x y
+-- intersection = intersection'
 intersection' :: PyType -> PyType -> PyType
 intersection' Any t = t
 intersection' t Any = t
@@ -97,31 +97,35 @@ intersection' (Alpha _ t1) t2 = Alpha "" $ intersection t1 t2
 intersection' t1 (Alpha _ t2) = Alpha "" $ intersection t1 t2
 
 -- difference x y = trace (prettyType x ++ " - " ++ prettyType y) $ difference' x y
-difference = difference'
+difference = difference' difference
 
-difference' :: PyType -> PyType -> PyType
-difference' Any Any = Void
-difference' Any _ = Any
-difference' _ Any = Void
-difference' t Void = t
-difference' Void _ = Void
-difference' (Scalar _ m1) (Scalar _ m2) =
+difference' :: (PyType -> PyType -> PyType) -> PyType -> PyType -> PyType
+difference' _ Any Any = Void
+difference' _ Any _ = Any
+difference' _ _ Any = Void
+difference' _ t Void = t
+difference' _ Void _ = Void
+difference' dif (Scalar _ m1) (Scalar _ m2) =
     toVoid $ Scalar Nothing $ Map.differenceWith fn m1 m2
     where
-        fn t1 t2 = if isVoid (difference t1 t2) then
-                    Nothing else Just (difference t1 t2)
-difference' sc@(Scalar {}) f@(Functional {}) = difference sc (singleton "__call__" f)
-difference' (Functional args1 ret1) (Functional args2 ret2) =
-    let almost = Functional (zipWith (\(s1, t1) (_, t2) -> (s1, difference t1 t2)) args1 args2)
-                    (difference ret1 ret2)
+        fn t1 t2 = if isVoid (dif t1 t2) then
+                    Nothing else Just (dif t1 t2)
+difference' dif sc@(Scalar {}) f@(Functional {}) = dif sc (singleton "__call__" f)
+difference' dif (Functional args1 ret1) (Functional args2 ret2) =
+    let almost = Functional (zipWith (\(s1, t1) (_, t2) -> (s1, dif t1 t2)) args1 args2)
+                    (dif ret1 ret2)
                     in if isVoidFunction almost then Void else almost
 
-difference' f@(Functional {}) t = difference t f
-difference' t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
-difference' t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
-difference' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ difference t1 t2
-difference' (Alpha _ s1) t2 = Alpha "" $ difference s1 t2
-difference' t1 (Alpha _ s1) = Alpha "" $ difference t1 s1
+difference' dif f@(Functional {}) t = dif t f
+difference' dif t1@(Alpha {}) t2 | hasSameName t1 t2 = Void
+difference' dif t1 t2@(Alpha {}) | hasSameName t1 t2 = Void
+difference' dif (Alpha _ t1) (Alpha _ t2) = Alpha "" $ dif t1 t2
+difference' dif (Alpha _ s1) t2 = Alpha "" $ dif s1 t2
+difference' dif t1 (Alpha _ s1) = Alpha "" $ dif t1 s1
+
+difference2 (Alpha {}) _ = Void
+difference2 _ (Alpha {}) = Void
+difference2 t1 t2 = difference' difference2 t1 t2
 
 hasSameName :: PyType -> PyType -> Bool
 hasSameName (Alpha s1 _) (Alpha s2 _) | s1 == s2 = True
@@ -244,7 +248,7 @@ matchType :: PyType -> PyType -> Maybe TypeError
 matchType Any _ = Nothing
 matchType _ Any = Nothing
 matchType t1 t2 =
-    let dif = difference t1 t2 in
+    let dif = difference2 t1 t2 in
     if isVoid dif || isVoidFunction dif then Nothing else
         case dif of
             (Scalar _ map) -> Just (Difference t1 t2 map)
