@@ -33,6 +33,7 @@ inferTypeForExpression state expr = do
                           warn pos $ duckf "The expression " expr " may have no attribute '" att "' (" expr " :: " exprType ")"
                           return Any
                       Just t -> return t
+      (Paren expr _) -> inferTypeForExpression state expr
       (None _) -> return Any
       _ -> return Any
 
