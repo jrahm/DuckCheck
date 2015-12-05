@@ -2,16 +2,21 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
 
-module DuckTest.Types where
+module DuckTest.Types
+    (union, intersection, difference, difference2, prettyType, prettyType',
+     getCallType, PyType(..), (><), (<>), fromList, mkAlpha,
+     TypeError(..), getAttribute, stripAlpha, matchType, UnionType(..),
+     IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid)
+    where
 
-import DuckTest.Internal.Common hiding (union)
+import DuckTest.Internal.Common hiding (union, (<>))
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Debug.Trace
 
 import Control.Arrow
-import Control.Monad.Writer.Lazy hiding (Any)
+import Control.Monad.Writer.Lazy hiding (Any, (<>))
 
 {-
  - This is a data type representing an inferred type in Python. THere
@@ -60,54 +65,76 @@ singleton str = Scalar Nothing . Map.singleton str
 singletonAny :: String -> PyType
 singletonAny = flip singleton Any
 
+union :: PyType -> PyType -> PyType
+{-| The union of two PyTypes. This returs a third PyType that is
+ - "larger" than the previous two. That means it matches more things,
+ - but it is more restrictive to match against. It is always at least
+ - as hard to match against the union of t1 and t2 than it is to match
+ - against t1 and t2 individually
+ -
+ - The union is used to infer the type of variables by inference primarily -}
 -- union x y = trace (prettyType x ++ " u " ++ prettyType y) $ union' x y
 union = union'
-union' :: PyType -> PyType -> PyType
-union' Any _ = Any
-union' _ Any = Any
-union' t Void = t
-union' Void t = t
-union' (Scalar s1 m1) (Scalar s2 m2) = Scalar (unionStr s1 s2) $ Map.unionWith union m1 m2
     where
-        unionStr Nothing Nothing = Nothing
-        unionStr s1 s2 | s1 == s2 = s1
-        unionStr s1 s2 = Just $ printf "(%s)&(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
+    union' :: PyType -> PyType -> PyType
+    union' Any _ = Any
+    union' _ Any = Any
+    union' t Void = t
+    union' Void t = t
+    union' (Scalar s1 m1) (Scalar s2 m2) = Scalar (unionStr s1 s2) $ Map.unionWith union m1 m2
+        where
+            unionStr Nothing Nothing = Nothing
+            unionStr s1 s2 | s1 == s2 = s1
+            unionStr s1 s2 = Just $ printf "(%s)&(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
 
-union' sc@Scalar {} f@Functional {} = sc `union` singleton "__call__" f
-union' (Functional args1 ret1) (Functional args2 ret2) =
-    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `intersection` t2)) args1 args2)
-               (ret1 `union` ret2)
-union' f@Functional {} t = t `union` f
-union' t1@Alpha {} t2 | hasSameName t1 t2 = t1
-union' t1 t2@Alpha {} | hasSameName t1 t2 = t2
-union' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ union t1 t2
-union' (Alpha _ s1) t2 = Alpha "" (s1 `union` t2)
-union' t1 (Alpha _ s1) = Alpha "" (s1 `union` t1)
+    union' sc@Scalar {} f@Functional {} = sc `union` singleton "__call__" f
+    union' (Functional args1 ret1) (Functional args2 ret2) =
+        Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `intersection` t2)) args1 args2)
+                   (ret1 `union` ret2)
+    union' f@Functional {} t = t `union` f
+    union' t1@Alpha {} t2 | hasSameName t1 t2 = t1
+    union' t1 t2@Alpha {} | hasSameName t1 t2 = t2
+    union' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ union t1 t2
+    union' (Alpha _ s1) t2 = Alpha "" (s1 `union` t2)
+    union' t1 (Alpha _ s1) = Alpha "" (s1 `union` t1)
 
+intersection :: PyType -> PyType -> PyType
+{-| The intersection of two types. The oppsite of the union is true
+   for these types. The intersection type is smaller than its constituents,
+   and is there fore harder to match against other types, but this type
+   is easier for others to match against. The intersection of types is
+   used to calculate the return type in branching Suites. -}
 -- intersection x y = trace (prettyType x ++ " n " ++ prettyType y) $ intersection' x y
 intersection = intersection'
-intersection' :: PyType -> PyType -> PyType
-intersection' Any t = t
-intersection' t Any = t
-intersection' Void _ = Void
-intersection' _ Void = Void
-intersection' (Scalar s1 m1) (Scalar s2 m2) = Scalar (interStr s1 s2) $ Map.intersectionWith intersection m1 m2
     where
-        interStr Nothing Nothing = Nothing
-        interStr s1 s2 | s1 == s2 = s1
-        interStr s1 s2 = Just $ printf "(%s)|(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
-intersection' sc@Scalar {} f@Functional {} = intersection sc (singleton "__call__" f)
-intersection' (Functional args1 ret1) (Functional args2 ret2) =
-    Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
-               (intersection ret1 ret2)
-intersection' f@Functional {} t = intersection t f
-intersection' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ intersection t1 t2
-intersection' (Alpha _ t1) t2 = Alpha "" $ intersection t1 t2
-intersection' t1 (Alpha _ t2) = Alpha "" $ intersection t1 t2
+    intersection' :: PyType -> PyType -> PyType
+    intersection' Any t = t
+    intersection' t Any = t
+    intersection' Void _ = Void
+    intersection' _ Void = Void
+    intersection' (Scalar s1 m1) (Scalar s2 m2) = Scalar (interStr s1 s2) $ Map.intersectionWith intersection m1 m2
+        where
+            interStr Nothing Nothing = Nothing
+            interStr s1 s2 | s1 == s2 = s1
+            interStr s1 s2 = Just $ printf "(%s)|(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
+    intersection' sc@Scalar {} f@Functional {} = intersection sc (singleton "__call__" f)
+    intersection' (Functional args1 ret1) (Functional args2 ret2) =
+        Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
+                   (intersection ret1 ret2)
+    intersection' f@Functional {} t = intersection t f
+    intersection' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ intersection t1 t2
+    intersection' (Alpha _ t1) t2 = Alpha "" $ intersection t1 t2
+    intersection' t1 (Alpha _ t2) = Alpha "" $ intersection t1 t2
 
--- difference x y = trace (prettyType x ++ " - " ++ prettyType y) $ difference' x y
+    -- difference x y = trace (prettyType x ++ " - " ++ prettyType y) $ difference' x y
+difference :: PyType -> PyType -> PyType
+{-| The difference of a type returns a type that can act like the
+ - first, but not the second. Difference is not a very useful
+ - operator for actually constructing types, however, it is extremely
+ - useful for checking to see if two types are compatible. That is,
+ - it can check to see if the first type is smaller or larger than
+ - the second type. -}
 difference = difference' difference
-
 difference' :: (PyType -> PyType -> PyType) -> PyType -> PyType -> PyType
 difference' _ Any Any = Void
 difference' _ Any _ = Any
@@ -124,7 +151,6 @@ difference' dif (Functional args1 ret1) (Functional args2 ret2) =
     let almost = Functional (zipWith (\(s1, t1) (_, t2) -> (s1, dif t1 t2)) args1 args2)
                     (dif ret1 ret2)
                     in if isVoidFunction almost then Void else almost
-
 difference' dif f@Functional {} t = dif t f
 difference' dif t1@Alpha {} t2 | hasSameName t1 t2 = Void
 difference' dif t1 t2@Alpha {} | hasSameName t1 t2 = Void
@@ -139,12 +165,17 @@ difference2 _ Any = Void
 difference2 t1 t2 = difference' difference2 t1 t2
 
 hasSameName :: PyType -> PyType -> Bool
+{-| returns true if two types have the same name -}
 hasSameName (Alpha s1 _) (Alpha s2 _) | s1 == s2 = True
 hasSameName (Alpha s1 _) (Scalar (Just s2) _) | s1 == s2 = True
 hasSameName (Scalar (Just s2) _) (Alpha s1 _) | s1 == s2 = True
 hasSameName _ _ = False
 
 isVoid :: PyType -> Bool
+{-| returns true if the given type is void. Theoretically speaking, only the Void
+ - type is supposed to be void, but with how the algebra is constructed, it is
+ - possible to get elemests like the empty Scaalar and the alpha of the empty
+ - scalar. Both of these are still void (and theoretically equal to void). -}
 isVoid t = case t of
     (Alpha _ t') -> isVoid' t'
     _ -> isVoid' t
@@ -155,10 +186,15 @@ isVoid t = case t of
         isVoid' _ = False
 
 toVoid :: PyType -> PyType
+{-| If a type is void, then returns Void, else returns the type unchanged -}
 toVoid v | isVoid v = Void
 toVoid x = x
 
 isCompatibleAs :: PyType -> PyType -> Bool
+{-| Check ot see if type `larger` is compatible with `smaller`.
+    While this function theorectcally checks smaller - larger == Void,
+    this function will add the guard making anything compatible with the
+    Any type -}
 isCompatibleAs smaller = isVoid . isCompatibleAs' smaller
 
 isCompatibleAs' :: PyType -> PyType -> PyType
@@ -167,6 +203,8 @@ isCompatibleAs' _ Any = Void
 isCompatibleAs' smaller larger = difference2 smaller larger
 
 getAttribute :: String -> PyType -> Maybe PyType
+{-| return the attribute of a type, or Nothing if
+ - there is no such attribute. -}
 getAttribute att (Scalar _ map) = Map.lookup att map
 getAttribute "__call__" f@Functional {} = Just f
 getAttribute att (Alpha _ t) = getAttribute att t
