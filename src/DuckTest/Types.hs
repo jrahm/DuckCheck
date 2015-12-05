@@ -7,7 +7,7 @@ module DuckTest.Types
      getCallType, PyType(..), (><), (<>), fromList, mkAlpha,
      TypeError(..), getAttribute, stripAlpha, matchType, UnionType(..),
      IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid,
-     instanceTypeFromStatic)
+     instanceTypeFromStatic, setAttribute)
     where
 
 import DuckTest.Internal.Common hiding (union, (<>))
@@ -41,7 +41,7 @@ import Control.Monad.Writer.Lazy hiding (Any, (<>))
 data PyType =   Scalar (Maybe String) (Map String PyType)
               | Functional [(String, PyType)] PyType
               | Any
-              | Alpha String PyType
+              | Alpha PyType
               | Void
 
 instance Show PyType where
@@ -52,7 +52,7 @@ instance Show PyType where
                 fromMaybe "" name ++ "{" ++ intercalate ", " (map (\(str, typ) -> str ++ " :: " ++ show typ) l) ++ "}"
     show (Functional args ret) = "(" ++ intercalate "," (map show args) ++ ") -> " ++ show ret
     show Any = "Any"
-    show (Alpha name _) = "alpha " ++ name
+    show (Alpha _) = "alpha"
     show Void = "Void"
 
 fromList :: Maybe String -> [(String, PyType)] -> PyType
@@ -88,11 +88,9 @@ union = union'
         Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `intersection` t2)) args1 args2)
                    (ret1 `union` ret2)
     union' f@Functional {} t = t `union` f
-    union' t1@Alpha {} t2 | hasSameName t1 t2 = t1
-    union' t1 t2@Alpha {} | hasSameName t1 t2 = t2
-    union' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ union t1 t2
-    union' (Alpha _ s1) t2 = Alpha "" (s1 `union` t2)
-    union' t1 (Alpha _ s1) = Alpha "" (s1 `union` t1)
+    union' (Alpha t1) (Alpha t2) = Alpha $ union t1 t2
+    union' (Alpha s1) t2 = Alpha (s1 `union` t2)
+    union' t1 (Alpha s1) = Alpha (s1 `union` t1)
 
 intersection :: PyType -> PyType -> PyType
 {-| The intersection of two types. The oppsite of the union is true
@@ -118,9 +116,9 @@ intersection = intersection'
         Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
                    (intersection ret1 ret2)
     intersection' f@Functional {} t = intersection t f
-    intersection' (Alpha _ t1) (Alpha _ t2) = Alpha "" $ intersection t1 t2
-    intersection' (Alpha _ t1) t2 = Alpha "" $ intersection t1 t2
-    intersection' t1 (Alpha _ t2) = Alpha "" $ intersection t1 t2
+    intersection' (Alpha t1) (Alpha t2) = Alpha $ intersection t1 t2
+    intersection' (Alpha t1) t2 = Alpha $ intersection t1 t2
+    intersection' t1 (Alpha t2) = Alpha $ intersection t1 t2
 
     -- difference x y = trace (prettyType x ++ " - " ++ prettyType y) $ difference' x y
 difference :: PyType -> PyType -> PyType
@@ -148,11 +146,9 @@ difference' dif (Functional args1 ret1) (Functional args2 ret2) =
                     (dif ret1 ret2)
                     in if isVoidFunction almost then Void else almost
 difference' dif f@Functional {} t = dif t f
-difference' _   t1@Alpha {} t2 | hasSameName t1 t2 = Void
-difference' _   t1 t2@Alpha {} | hasSameName t1 t2 = Void
-difference' dif (Alpha _ t1) (Alpha _ t2) = Alpha "" $ dif t1 t2
-difference' dif (Alpha _ s1) t2 = Alpha "" $ dif s1 t2
-difference' dif t1 (Alpha _ s1) = Alpha "" $ dif t1 s1
+difference' dif (Alpha t1) (Alpha t2) = Alpha $ dif t1 t2
+difference' dif (Alpha s1) t2 = Alpha $ dif s1 t2
+difference' dif t1 (Alpha s1) = Alpha $ dif t1 s1
 
 difference2 :: PyType -> PyType -> PyType
 difference2 Alpha {} _ = Void
@@ -161,25 +157,18 @@ difference2 Any _ = Void
 difference2 _ Any = Void
 difference2 t1 t2 = difference' difference2 t1 t2
 
-hasSameName :: PyType -> PyType -> Bool
-{-| returns true if two types have the same name -}
-hasSameName (Alpha s1 _) (Alpha s2 _) | s1 == s2 = True
-hasSameName (Alpha s1 _) (Scalar (Just s2) _) | s1 == s2 = True
-hasSameName (Scalar (Just s2) _) (Alpha s1 _) | s1 == s2 = True
-hasSameName _ _ = False
-
 isVoid :: PyType -> Bool
 {-| returns true if the given type is void. Theoretically speaking, only the Void
  - type is supposed to be void, but with how the algebra is constructed, it is
  - possible to get elemests like the empty Scaalar and the alpha of the empty
  - scalar. Both of these are still void (and theoretically equal to void). -}
 isVoid t = case t of
-    (Alpha _ t') -> isVoid' t'
+    (Alpha t') -> isVoid' t'
     _ -> isVoid' t
     where
         isVoid' Void = True
         isVoid' (Scalar _ m) | Map.null m = True
-        isVoid' (Alpha _ _) = True
+        isVoid' (Alpha _) = True
         isVoid' _ = False
 
 toVoid :: PyType -> PyType
@@ -201,8 +190,17 @@ getAttribute :: String -> PyType -> Maybe PyType
  - there is no such attribute. -}
 getAttribute att (Scalar _ map') = Map.lookup att map'
 getAttribute "__call__" f@Functional {} = Just f
-getAttribute att (Alpha _ t) = getAttribute att t
+getAttribute att (Alpha t) = getAttribute att t
 getAttribute _ _ = Nothing
+
+setAttribute :: String -> PyType -> PyType -> PyType
+{-| return the attribute of a type, or Nothing if
+ - there is no such attribute. -}
+setAttribute att typ (Scalar _ map') = Scalar Nothing $ Map.insert att typ map'
+setAttribute att typ t@Functional {} = setAttribute att typ $ Scalar Nothing $ Map.singleton "__call__" t
+setAttribute att typ (Alpha a) = Alpha (setAttribute att typ a)
+setAttribute _ _ Any = Any
+setAttribute att typ Void = singleton att typ
 
 newtype UnionType = Union PyType
 instance Monoid UnionType where
@@ -230,8 +228,7 @@ instance Unwrapbable IntersectionType PyType where
 (<>) = union
 
 mkAlpha :: PyType -> PyType
-mkAlpha s@(Scalar name _) = Alpha (fromMaybe "" name) s
-mkAlpha s = Alpha "" s
+mkAlpha = Alpha
 
 liftFromDotList :: [String] -> PyType -> PyType
 liftFromDotList list init' = foldr singleton init' list
@@ -240,7 +237,7 @@ prettyType :: PyType -> String
 prettyType = prettyType' False
 
 prettyType' :: Bool -> PyType -> String
-prettyType' b (Alpha "" s) = "alpha " ++ prettyType'' b s
+prettyType' b (Alpha s) = "alpha " ++ prettyType'' b s
 prettyType' b t = prettyType'' b t
 
 prettyType'' :: Bool -> PyType -> String
@@ -275,7 +272,7 @@ prettyType'' descend typ = execWriter $ prettyType_ 0 typ
              prettyType_ (indent + 1) ret
 
           prettyType_ _ Any = tell "Any"
-          prettyType_ _ (Alpha nam _) = tell $ "alpha " ++ nam
+          prettyType_ _ (Alpha _) = tell "alpha"
 
           prettyType_ _ Void = tell "Void"
 
@@ -295,7 +292,7 @@ stripAlpha (Scalar n m) = Scalar n $ Map.map stripAlpha m
 stripAlpha x = x
 
 stripAlpha' :: PyType -> PyType
-stripAlpha' (Alpha _ a) = stripAlpha' a
+stripAlpha' (Alpha a) = stripAlpha' a
 stripAlpha' x = x
 
 {- No news is good news. Check to see if t1 is smaller than t2 -}
@@ -304,13 +301,13 @@ matchType t1 t2 =
         case isCompatibleAs t1 t2 of
             t | isVoid t -> Nothing
             (Scalar _ m) -> Just (Difference t1 t2 m)
-            (Alpha _ (Scalar _ m)) -> Just (Difference t1 t2 m)
+            (Alpha (Scalar _ m)) -> Just (Difference t1 t2 m)
             _ -> Just (Incompatible t1 t2)
 
 getCallType :: PyType -> Maybe PyType
 getCallType t@Functional {} = Just t
 getCallType (Scalar _ m) = Map.lookup "__call__" m
-getCallType (Alpha _ a) = getCallType a
+getCallType (Alpha a) = getCallType a
 getCallType _ = Nothing
 
 instanceTypeFromStatic :: PyType -> Maybe PyType

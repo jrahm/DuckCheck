@@ -12,6 +12,7 @@ import qualified Data.Map as Map
 import DuckTest.Infer.Expression
 import DuckTest.Internal.State
 import DuckTest.Internal.Format
+import Control.Arrow
 
 
 {- Takes a state and a list of statements (the class body) and finds
@@ -25,42 +26,32 @@ import DuckTest.Internal.Format
  -}
 findSelfAssignments :: forall a. InternalState -> [Statement a] -> DuckTest a PyType
 findSelfAssignments state statements =
-    traceAssignments functionMap initFunction
+    foldM traceAssignments Void $ functionList statements
     where
-        {- A map of all function by their names to bodies.
-         - String => [Statement] -}
-        functionMap :: Map String [Statement a]
-        functionMap = Map.fromList $ flip mapMaybe statements $ \stmt ->
+        functionList :: [Statement a] -> [[Statement a]]
+        functionList = mapMaybe $ \stmt ->
                         case stmt of
-                            (Fun {fun_name = (Ident name _), fun_body = body}) ->
-                                Just (name, body)
+                            Fun {fun_body = body} -> Just body
                             _ -> Nothing
 
-        {- The __init__ function. If it cannot be found, then we use
-         - an empty function instead. -}
-        initFunction :: [Statement a]
-        initFunction = Map.findWithDefault [] "__init__" functionMap
-
-        {- Does the actual fold. Traces over the init function and
-         - all directly called functions. When an assignment is witnessed
-         - we append the corresponding singleton type to the type.
-         -
-         - If we see a standalone function, then we trace into that function,
-         - but we need to make sure to avoid infinite recursion ...
-         -}
-        traceAssignments :: Map String [Statement a] -> [Statement a] -> DuckTest a PyType
-        traceAssignments fnMap stmts =
-            foldM' Void stmts  $ \typ stmt -> case stmt of
+        traceAssignments :: PyType -> [Statement a] -> DuckTest a PyType
+        traceAssignments ini stmts =
+            foldM' ini stmts  $ \typ stmt -> case stmt of
 
                 (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] ex _) -> do
-                    inferred <- inferTypeForExpression (addVariableType "self" typ state) ex
-                    return (typ `union` singleton att inferred)
-
-                (StmtExpr (Call (Dot (Var (Ident "self" _) _) (Ident att _) _) _ _) _) -> do
-                    infer <- fromMaybe (return Void) $ traceAssignments (Map.delete att fnMap) <$> Map.lookup att fnMap
-                    return (typ `union` infer)
+                    inferred <- inferTypeForExpressionNoStrip (addVariableType "self" typ state) ex
+                    return (tryIntersect typ att inferred)
 
                 _ -> return typ
+
+        tryIntersect :: PyType -> String -> PyType -> PyType
+        tryIntersect typ attname atttype =
+            let curattr = fromMaybe Any (getAttribute attname typ)
+                toadd = curattr `intersection` atttype
+                in
+                trace (printf "toAdd %s, curattr %s, atttype %s"
+                        (prettyType toadd) (prettyType curattr) (prettyType atttype)) $
+                (setAttribute attname toadd typ)
 
 {- From a PyType, get the init function from it. If we cannot get the
  - init function from it, we simply create an itit function type. -}
@@ -100,3 +91,14 @@ toBoundType name (Scalar _ m2) selfAssign =
         in
     selfAssign `union` boundFns
 toBoundType _ _ _ = undefined
+
+rewireAlphas :: PyType -> PyType
+{-| finds all Alpha Any's in a type and changes
+ - them to Alpha t's. -}
+rewireAlphas typ = rewireAlphas' typ typ
+
+rewireAlphas' :: PyType -> PyType -> PyType
+rewireAlphas' top (Alpha Any) = Alpha top
+rewireAlphas' top (Functional args ret) = Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
+rewireAlphas' top (Scalar s m) = Scalar s (Map.map (rewireAlphas' top) m)
+rewireAlphas' _ x = x

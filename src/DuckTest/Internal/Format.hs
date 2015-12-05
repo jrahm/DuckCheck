@@ -89,6 +89,6 @@ instance (DuckShowable PyType) where
         duckShow' ll (Scalar (Just name) _) | ll > Trace = name
         duckShow' ll (Scalar Nothing s) | ll > Trace = "{ " ++ intercalate ", " (Map.keys s) ++ " }"
         duckShow' ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (\(a, b) -> a ++ " :: " ++ duckShow' ll b) args) ++ ") -> " ++ duckShow' ll ret
-        duckShow' ll (Alpha n _) | ll > Trace = n
+        duckShow' ll (Alpha _) | ll > Trace = "alpha"
         duckShow' Trace typ = prettyType' True typ
         duckShow' _ typ = prettyType' False typ

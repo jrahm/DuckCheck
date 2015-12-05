@@ -109,7 +109,7 @@ handleClass state name body pos = do
                  return $ addVariableType vname inferredType curstate
             _ -> return curstate
 
-    let staticVarType = stateToType staticVarsState
+    let staticVarType = stateToType staticVarsState `union` Functional [] (Alpha Any)
     let newstate = addVariableType name staticVarType state
     staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
                           case stmt of
@@ -118,9 +118,14 @@ handleClass state name body pos = do
     let staticClassType@Scalar {} = staticVarType `union` stateToType (differenceStates staticClassState newstate)
     let nextstate = addVariableType name staticClassType state
 
-    boundType <- toBoundType name staticClassType <$> findSelfAssignments nextstate body
+    boundType <- rewireAlphas <$>
+                 toBoundType name staticClassType <$>
+                 findSelfAssignments nextstate body
+
+    Info %%! duckf "Bound type " boundType
+
     let classFunctionalType = initType boundType
-    let staticClassType' = staticClassType `union` classFunctionalType
+    let staticClassType' = rewireAlphas' boundType (staticClassType `union` classFunctionalType)
     let laststate = addVariableType name staticClassType' state
 
     matchBoundWithStatic pos boundType staticClassType'

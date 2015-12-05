@@ -7,10 +7,9 @@ import DuckTest.Monad
 import DuckTest.MonadHelper
 import DuckTest.Internal.Format
 
-inferTypeForExpression :: InternalState -> Expr e -> DuckTest e PyType
-inferTypeForExpression state expr = do
-    Trace %%! duckf "TEST => " expr
-    ret <- case expr of
+inferTypeForExpressionNoStrip :: InternalState -> Expr e -> DuckTest e PyType
+inferTypeForExpressionNoStrip state expr =
+    case expr of
 
       (Var (Ident name pos) _) ->
           maybe' (getVariableType state name)
@@ -37,8 +36,13 @@ inferTypeForExpression state expr = do
       (None _) -> return Any
       _ -> return Any
 
+inferTypeForExpression :: InternalState -> Expr e -> DuckTest e PyType
+inferTypeForExpression state expr = do
+    Trace %%! duckf "TEST => " expr
+    ret <- inferTypeForExpressionNoStrip state expr
+
     Debug %%! duckf expr " :: " (stripAlpha ret)
-    return $ stripAlpha ret
+    return (stripAlpha ret)
 
 
 checkCallExpression :: InternalState -> Expr e -> [Argument e] -> e -> DuckTest e PyType
