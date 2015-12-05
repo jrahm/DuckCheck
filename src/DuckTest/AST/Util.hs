@@ -1,11 +1,11 @@
 {-# LANGUAGE RankNTypes #-}
 module DuckTest.AST.Util where
 
+import Prelude hiding (exp)
 import DuckTest.Internal.Common
 
 import Control.Monad.Writer.Lazy
 import Control.Monad.Identity
-import Debug.Trace
 
 class HasExpressions a where
 
@@ -41,7 +41,7 @@ dotToList _ = []
 
 {- Fold a value over a list of expressions -}
 walkExpressions :: (HasExpressions expr) => a -> expr e -> (a -> Expr e -> (a, Command e)) -> a
-walkExpressions init expression fn = walkExpressions' init (subExpressions expression)
+walkExpressions start expression fn = walkExpressions' start (subExpressions expression)
     where walkExpressions' =
             foldl $ \cur expr ->
                     let (next, cmd) = fn cur expr in
@@ -75,9 +75,9 @@ recursivelyWalkExpressions stmt =
 
 instance HasExpressions Expr where
 
-    subExpressions exp =
+    subExpressions expression =
 
-        case exp of
+        case expression of
             Call fn args _ -> fn : map getExpression args
             Subscript e1 e2 _ -> [e1, e2]
             SlicedExpr e1 _ _ -> return e1 -- todo implement strides
@@ -102,9 +102,9 @@ instance HasExpressions Expr where
             List exps _ -> exps
             _ -> []
 
-    mapExpressionsM f exp =
+    mapExpressionsM f expression =
 
-        case exp of
+        case expression of
             Call fn args pos -> Call <$> f fn <*> mapM (mapExpressionsM f) args <*> pure pos
             Subscript e1 e2 pos -> Subscript <$> f e1 <*> f e2 <*> pure pos
             CondExpr e1 e2 e3 pos -> CondExpr <$> f e1 <*> f e2 <*> f e3 <*> pure pos
@@ -126,7 +126,7 @@ instance HasExpressions Expr where
             Dot exp att pos -> Dot <$> f exp <*> pure att <*> pure pos
             List exps pos -> List <$> mapM f exps <*> pure pos
 
-            _ -> return exp {- This is some unimplemented stuff ... -}
+            _ -> return expression {- This is some unimplemented stuff ... -}
 
 instance HasExpressions Argument where
 
@@ -169,10 +169,10 @@ instance HasExpressions Statement where
             Return exp _ -> maybeToList exp
 
             Try body handlers elses finally _ ->
-                allExpressions body ++ concatMap (\(Handler _ body _) -> allExpressions body) handlers ++
+                allExpressions body ++ concatMap (\(Handler _ handlerbody _) -> allExpressions handlerbody) handlers ++
                 allExpressions elses ++ allExpressions finally
 
-            Raise exp _ -> [] -- todo implement this
+            Raise _ _ -> [] -- todo implement this
             With context body _ ->
                 concatMap (\(ex1, mayex2) -> ex1 : maybeToList mayex2) context ++ allExpressions body
 
@@ -209,9 +209,9 @@ instance HasExpressions Statement where
                 Class a b <$> mapM (mapExpressionsM f) body
                           <*> pure pos
 
-            Conditional guard elsestmt pos ->
+            Conditional condguard elsestmt pos ->
                 Conditional <$> mapM (\(ex, suite) ->
-                                    (,) <$> f ex <*> mapM (mapExpressionsM f) suite) guard
+                                    (,) <$> f ex <*> mapM (mapExpressionsM f) suite) condguard
                             <*> mapM (mapExpressionsM f) elsestmt
                             <*> pure pos
 

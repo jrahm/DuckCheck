@@ -7,8 +7,6 @@ import DuckTest.Internal.Common
 import DuckTest.AST.Util
 import DuckTest.AST.BinaryOperators
 
-import Debug.Trace
-
 import qualified Data.Map as Map
 
 dunderFunctions :: Map String String

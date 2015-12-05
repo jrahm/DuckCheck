@@ -20,20 +20,18 @@ import DuckTest.Internal.Common
 
 import DuckTest.Monad
 import DuckTest.AST.Util
-import DuckTest.AST.BinaryOperators
 import DuckTest.Types
 import DuckTest.Internal.State
 import DuckTest.Internal.Format
 import DuckTest.Infer.Expression
 
-import Debug.Trace
 
 {- This function will take a Python function and infer the type
  - of this function. The type infered from this function is
  - of the type [args] -> return type. All the types are in a
  - structural format -}
 inferTypeForFunction :: InternalState -> Statement a -> DuckTest a PyType
-inferTypeForFunction state (Fun (Ident name _) params _ body _) =
+inferTypeForFunction state (Fun (Ident _ _) params _ body _) =
 
     {- Get a list of the names of the parameters to the function. For
      - each of those parameters, try to infer the type of each.
@@ -88,9 +86,9 @@ observeTypeForExpression state expr stmts = do
          - look up what `x` requires for this function to be valid.
          -
          - This observation is of function(..., x, ...)-}
-        observeExpr ex@(Call callex args _) = do
+        observeExpr outerexpr@(Call callex args _) = do
                  calltyp <- ignore $ inferTypeForExpression state callex
-                 maybe' (getCallType calltyp) (iterateOverChildren ex) $
+                 maybe' (getCallType calltyp) (iterateOverChildren outerexpr) $
                     \typ -> case typ of
                         (Functional paramsType  _) -> do
 
@@ -111,13 +109,8 @@ observeTypeForExpression state expr stmts = do
 
                         _ -> return Void
 
-        observeExpr exp = iterateOverChildren exp
+        observeExpr expr' = iterateOverChildren expr'
 
 
         {- infer through the child expressions of this expression -}
-        iterateOverChildren exp = unwrap <$> mconcatMapM (Union <.< observeExpr) (subExpressions exp)
-
-{- Return true if this is a chain of attribute accesses with
- - the head of the list being the string given. -}
-isDotChain :: String -> Expr a -> Bool
-isDotChain str expr = (not . null) (dotToList expr) && (head (dotToList expr) == str)
+        iterateOverChildren expr' = unwrap <$> mconcatMapM (Union <.< observeExpr) (subExpressions expr')

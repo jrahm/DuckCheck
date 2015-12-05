@@ -18,10 +18,10 @@ class CheckerState s where
 runChecker :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan s
 {-| Run a checker under some state s and return the resulting state
  - after the fold across the expressions. -}
-runChecker init stmts = do
+runChecker initstate stmts = do
     Trace %%! duckf "Running checker on stmts"
     forM_ stmts $ \s -> Trace %%! duckf s
-    foldM foldFunction init stmts
+    foldM foldFunction initstate stmts
 
 runChecker_ :: (CheckerState s) => s -> [Statement SrcSpan] -> DuckTest SrcSpan ()
 {-| Like the above, but ignore the results -}

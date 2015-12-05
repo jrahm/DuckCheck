@@ -8,9 +8,6 @@ import System.IO
 import System.Posix.Terminal
 import System.Posix.Types
 
-import qualified Data.Map as Map
-import qualified Data.Set as Set
-
 import DuckTest.MonadHelper
 -- import DuckTest.Insanity
 import DuckTest.Checker
@@ -19,7 +16,7 @@ import DuckTest.Monad
 import DuckTest.AST.Preprocess
 import DuckTest.Builtins
 import DuckTest.Parse
-import DuckTest.Internal.State.Instance
+import DuckTest.Internal.State.Instance()
 
 runDuckTestM :: FilePath -> DuckTest SrcSpan ()
 runDuckTestM fp =

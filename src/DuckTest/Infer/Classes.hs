@@ -5,19 +5,14 @@ import DuckTest.Internal.Common hiding (union)
 
 import DuckTest.Monad
 import DuckTest.MonadHelper
-import DuckTest.AST.Util
-import DuckTest.AST.BinaryOperators
 import DuckTest.Types
 
 import qualified Data.Map as Map
 
-import DuckTest.Infer.Functions
 import DuckTest.Infer.Expression
 import DuckTest.Internal.State
 import DuckTest.Internal.Format
 
-import Control.Arrow
-import Debug.Trace
 
 {- Takes a state and a list of statements (the class body) and finds
  - the self assignments. This returns a PyType as a scalar of all
@@ -54,7 +49,7 @@ findSelfAssignments state statements =
          - but we need to make sure to avoid infinite recursion ...
          -}
         traceAssignments :: Map String [Statement a] -> [Statement a] -> DuckTest a PyType
-        traceAssignments map stmts =
+        traceAssignments fnMap stmts =
             foldM' Void stmts  $ \typ stmt -> case stmt of
 
                 (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] ex _) -> do
@@ -62,7 +57,7 @@ findSelfAssignments state statements =
                     return (typ `union` singleton att inferred)
 
                 (StmtExpr (Call (Dot (Var (Ident "self" _) _) (Ident att _) _) _ _) _) -> do
-                    infer <- fromMaybe (return Void) $ traceAssignments (Map.delete att map) <$> Map.lookup att map
+                    infer <- fromMaybe (return Void) $ traceAssignments (Map.delete att fnMap) <$> Map.lookup att fnMap
                     return (typ `union` infer)
 
                 _ -> return typ
@@ -71,8 +66,8 @@ findSelfAssignments state statements =
  - init function from it, we simply create an itit function type. -}
 initType :: PyType -> PyType
 initType f@(Scalar _ m) =
-    let init = Map.findWithDefault (Functional [] f) "__init__" m in
-    case init of
+    let initFn = Map.findWithDefault (Functional [] f) "__init__" m in
+    case initFn of
         (Functional args _) -> Functional args f
         _ -> Functional [] f
 initType f = Functional [] f
@@ -88,6 +83,7 @@ matchBoundWithStatic pos bound (Scalar _ m) =
                 whenJust (matchType self bound)
                     (warnTypeError pos)
             _ -> return ()
+matchBoundWithStatic _ _ _ = undefined
 
 {- Given self assignments (found from the above function) and the
  - sattic type of the class, create a bound type instance that
@@ -95,7 +91,7 @@ matchBoundWithStatic pos bound (Scalar _ m) =
  - `self' parameter removed.
  -}
 toBoundType :: String -> PyType -> PyType -> PyType
-toBoundType name (Scalar _ m2) selfAssign =
+toBoundType _ (Scalar _ m2) selfAssign =
     let boundFns = Scalar Nothing $
                     flip Map.mapMaybe m2 $
                         \typ -> case typ of
@@ -103,3 +99,4 @@ toBoundType name (Scalar _ m2) selfAssign =
                                  _ -> Nothing
         in
     selfAssign `union` boundFns
+toBoundType _ _ _ = undefined

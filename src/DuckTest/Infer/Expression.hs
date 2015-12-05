@@ -20,20 +20,20 @@ inferTypeForExpression state expr = do
       (Call callexpr args pos) -> do
           exprType <- checkCallExpression state callexpr args pos
           case getCallType exprType of
-              Just (Functional args ret) -> return ret
+              Just (Functional _ ret) -> return ret
               _ -> return Any
 
-      (Dot expr (Ident att _) pos) -> do
-          exprType <- inferTypeForExpression state expr
-          Trace %% "Infer for type | " ++ prettyText expr ++ " :: " ++ prettyType exprType
-          case exprType of
+      (Dot subexpr (Ident att _) pos) -> do
+          subexprType <- inferTypeForExpression state subexpr
+          Trace %% "Infer for type | " ++ prettyText subexpr ++ " :: " ++ prettyType subexprType
+          case subexprType of
               Any -> return Any
-              _ -> case getAttribute att exprType of
+              _ -> case getAttribute att subexprType of
                       Nothing -> do
-                          warn pos $ duckf "The expression " expr " may have no attribute '" att "' (" expr " :: " exprType ")"
+                          warn pos $ duckf "The subexpression " subexpr " may have no attribute '" att "' (" subexpr " :: " subexprType ")"
                           return Any
                       Just t -> return t
-      (Paren expr _) -> inferTypeForExpression state expr
+      (Paren subexpr _) -> inferTypeForExpression state subexpr
       (None _) -> return Any
       _ -> return Any
 
@@ -41,6 +41,7 @@ inferTypeForExpression state expr = do
     return $ stripAlpha ret
 
 
+checkCallExpression :: InternalState -> Expr e -> [Argument e] -> e -> DuckTest e PyType
 checkCallExpression st lhs args pos = do
     lhsType <- inferTypeForExpression st lhs
     case lhsType of
@@ -54,10 +55,10 @@ checkCallExpression st lhs args pos = do
     return lhsType
 
     where
-        tryMatchExprType state pos paramType argExpr = do
+        tryMatchExprType state position paramType argExpr = do
             argType <- inferArgType state argExpr
             whenJust (matchType paramType argType)
-                (warnTypeError pos)
+                (warnTypeError position)
 
 inferArgType :: InternalState -> Argument e -> DuckTest e PyType
 inferArgType st (ArgExpr expr _) = inferTypeForExpression st expr
