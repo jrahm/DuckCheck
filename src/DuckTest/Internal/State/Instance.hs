@@ -150,6 +150,13 @@ handleConditional state guards elsebody = do
                                             (Call (Var (Ident "hasattr" _) _) [ArgExpr (Var (Ident x _) _) _, ArgExpr (Call (Var (Ident "str" _) _) [ArgExpr (Strings s _) _] _) _] _)
                                                 ->  let s' = takeWhile (/='"') (tail $ concat s) in
                                                     modifyVariableType x (`union` singleton s' Any) state
+                                            (Call (Dot (Dot (Var (Ident var _) _)
+                                                  (Ident "__class__" _) _)
+                                                  (Ident "__eq__" _) _)
+                                                  [ArgExpr (Var (Ident clazz _) _) _] _)
+                                                ->
+                                                    let instanceType = instanceTypeFromStatic =<< getVariableType state clazz in
+                                                        maybe state (\t -> modifyVariableType var (const t) state) instanceType
                                             _ -> state
                   _ <- inferTypeForExpression state expr
                   runChecker modifiedState stmts

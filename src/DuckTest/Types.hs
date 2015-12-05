@@ -6,7 +6,8 @@ module DuckTest.Types
     (union, intersection, difference, difference2, prettyType, prettyType',
      getCallType, PyType(..), (><), (<>), fromList, mkAlpha,
      TypeError(..), getAttribute, stripAlpha, matchType, UnionType(..),
-     IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid)
+     IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid,
+     instanceTypeFromStatic)
     where
 
 import DuckTest.Internal.Common hiding (union, (<>))
@@ -311,3 +312,11 @@ getCallType t@Functional {} = Just t
 getCallType (Scalar _ m) = Map.lookup "__call__" m
 getCallType (Alpha _ a) = getCallType a
 getCallType _ = Nothing
+
+instanceTypeFromStatic :: PyType -> Maybe PyType
+instanceTypeFromStatic (Functional _ r) = Just r
+instanceTypeFromStatic (Scalar _ m) =
+    case Map.lookup "__call__" m of
+        Just (Functional _ ret) -> Just ret
+        _ -> Nothing
+instanceTypeFromStatic _ = Nothing

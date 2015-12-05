@@ -91,8 +91,8 @@ matchBoundWithStatic _ _ _ = undefined
  - `self' parameter removed.
  -}
 toBoundType :: String -> PyType -> PyType -> PyType
-toBoundType _ (Scalar _ m2) selfAssign =
-    let boundFns = Scalar Nothing $
+toBoundType name (Scalar _ m2) selfAssign =
+    let boundFns = Scalar (Just name) $
                     flip Map.mapMaybe m2 $
                         \typ -> case typ of
                                  (Functional (_:as) r) -> Just (Functional as r)
