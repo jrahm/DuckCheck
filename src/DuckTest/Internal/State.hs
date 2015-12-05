@@ -57,6 +57,10 @@ returnHit :: InternalState -> Bool
 returnHit (InternalState _ _ True) = True
 returnHit _ = False
 
+modifyVariableType :: String -> (PyType -> PyType) -> InternalState -> InternalState
+modifyVariableType var fn (InternalState m a b) =
+                    InternalState (Map.update (Just . fn) var m) a b
+
 getReturnType :: InternalState -> PyType
 getReturnType (InternalState _ _ False) = Void
 getReturnType (InternalState _ ret _) = ret

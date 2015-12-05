@@ -146,11 +146,31 @@ handleConditional :: InternalState -> [(Expr SrcSpan, [Statement SrcSpan])] -> [
     intersecting the types as well. -}
 handleConditional state guards elsebody = do
     endStates <- forM guards $ \(expr, stmts) -> do
+                  let modifiedState = case expr of
+                                            (Call (Var (Ident "hasattr" _) _) [ArgExpr (Var (Ident x _) _) _, ArgExpr (Call (Var (Ident "str" _) _) [ArgExpr (Strings s _) _] _) _] _)
+                                                ->  let s' = takeWhile (/='"') (tail $ concat s) in
+                                                    modifyVariableType x (`union` singleton s' Any) state
+                                            _ -> state
                   _ <- inferTypeForExpression state expr
-                  runChecker state stmts
+                  runChecker modifiedState stmts
 
     elseState <- runChecker state elsebody
     return $ foldl intersectStates elseState endStates
+
+handleAttributeAssign :: InternalState -> Expr a -> String -> Expr a -> DuckTest a InternalState
+handleAttributeAssign state lhs att rhs = do
+    rhsType <- inferTypeForExpression state rhs
+    _ <- inferTypeForExpression state lhs
+
+    let typeToAssign = singleton att rhsType
+    return $ assignType lhs typeToAssign
+
+    where
+
+    assignType (Var (Ident var _) _) typ = modifyVariableType var (`union` typ) state
+    assignType (Dot expr (Ident attr _) _) typ = assignType expr $ singleton attr typ
+    assignType _ _ = state
+
 
 instance CheckerState InternalState where
     foldFunction currentState statement = do
@@ -177,6 +197,9 @@ instance CheckerState InternalState where
 
             Assign [Var (Ident vname _) _] ex pos ->
                 handleAssign currentState vname ex pos
+
+            Assign [(Dot lhs (Ident att _) _)] rhs _ ->
+                handleAttributeAssign currentState lhs att rhs
 
             Conditional {cond_guards=guards, cond_else=elsebody} ->
                 handleConditional currentState guards elsebody

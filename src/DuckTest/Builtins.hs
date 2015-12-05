@@ -7,6 +7,7 @@ import Text.Printf
 
 initState :: InternalState
 initState =
+    addVariableType "hasattr" (Functional [("", Any), ("", strType)] Any) $
     addVariableType "print" (Functional [("", Any)] Any) $
     addVariableType "len" (Functional [("", fromList Nothing $ map (,Any) ["__len__"])] Any) $
     addVariableType "str" (Functional [("", fromList Nothing $ map (,Any) ["__str__"])] strType) $

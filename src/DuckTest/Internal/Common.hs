@@ -3,6 +3,7 @@ module DuckTest.Internal.Common
 
 import Data.Set as X (Set)
 import Data.Map as X (Map)
+import Debug.Trace as X
 
 import Language.Python.Common as X hiding (empty)
 
