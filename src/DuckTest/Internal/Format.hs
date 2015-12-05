@@ -8,7 +8,6 @@ import qualified Data.Map as Map
 import DuckTest.Monad
 import DuckTest.Types
 
-import Debug.Trace
 
 
 class DuckShowable a where
@@ -38,7 +37,7 @@ class LogResult r where
     logr :: (DuckShowable a) => a -> r
 
 instance (DuckShowable a, LogResult r) => LogResult (a -> r) where
-    logr fst snd = logr (fst, snd)
+    logr fst' snd' = logr (fst', snd')
 
 instance (DIsChar ch) => LogResult (DuckTest e [ch]) where
     logr a = do
@@ -85,11 +84,11 @@ instance DuckShowable Ansi where
 --     warn pos $ duckf t1 t2
 
 instance (DuckShowable PyType) where
-    duckShow ll t = return $ duckShow' ll t
+    duckShow logl t = return $ duckShow' logl t
       where
-        duckShow' ll (Scalar (Just name) s) | ll > Trace = name
+        duckShow' ll (Scalar (Just name) _) | ll > Trace = name
         duckShow' ll (Scalar Nothing s) | ll > Trace = "{ " ++ intercalate ", " (Map.keys s) ++ " }"
         duckShow' ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (\(a, b) -> a ++ " :: " ++ duckShow' ll b) args) ++ ") -> " ++ duckShow' ll ret
         duckShow' ll (Alpha n _) | ll > Trace = n
-        duckShow' Trace t = prettyType' True t
-        duckShow' _ t = prettyType' False t
+        duckShow' Trace typ = prettyType' True typ
+        duckShow' _ typ = prettyType' False typ

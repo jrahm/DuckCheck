@@ -36,7 +36,6 @@ import System.Posix.Terminal
 import System.Posix.Types
 
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 
 data DuckTestState e = DuckTestState {
       flags :: Set Flag    -- command line flags
@@ -91,24 +90,23 @@ hissLiftIO :: IO a -> DuckTest e a
 hissLiftIO = lift . lift
 
 emptyDuckTestState :: Set Flag -> LogLevel -> Bool -> DuckTestState e
-emptyDuckTestState flags ll term = DuckTestState flags ll mempty term $
+emptyDuckTestState initflags ll term = DuckTestState initflags ll mempty term $
     Map.singleton ["sys"] sysType
 
 runDuckTest :: Set Flag -> LogLevel -> DuckTest e a -> IO (Either String a)
 {-| Run something under the duck test monad given the set of command
  - line flags and the level to log at. -}
-runDuckTest flags ll fn = do
+runDuckTest initflags ll fn = do
     isTerm <- queryTerminal (Fd 1)
-    evalStateT (runEitherT fn) (emptyDuckTestState flags ll isTerm)
+    evalStateT (runEitherT fn) (emptyDuckTestState initflags ll isTerm)
 
 runDuckTestIO :: Set Flag -> LogLevel -> DuckTest e a -> IO (DuckTestState e)
-runDuckTestIO flags ll fn = do
+runDuckTestIO initflags ll fn = do
     isTerm <- queryTerminal (Fd 1)
-    flip execStateT (emptyDuckTestState flags ll isTerm) $ do
+    flip execStateT (emptyDuckTestState initflags ll isTerm) $ do
 
-            either <- runEitherT fn
-
-            case either of
+            result <- runEitherT fn
+            case result of
                 Left s -> liftIO (hPutStrLn stderr s >> exitWith (ExitFailure 1))
                 Right s -> return s
 
@@ -172,13 +170,13 @@ makeImport importPosition dottedlist parser checker = do
                     \(Module stmts', _) -> do
                         let stmts = preprocess stmts'
 
-                        lift $ modify $ \state ->
-                            state {imports = Map.insert dottedlist Any (imports state)}
+                        lift $ modify $ \st ->
+                            st {imports = Map.insert dottedlist Any (imports st)}
 
                         modType <- checker stmts
 
-                        lift $ modify $ \state ->
-                            state {imports = Map.insert dottedlist modType (imports state)}
+                        lift $ modify $ \st ->
+                            st {imports = Map.insert dottedlist modType (imports st)}
 
                         return modType
 infixl 1 %%

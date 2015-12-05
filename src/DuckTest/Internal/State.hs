@@ -26,8 +26,8 @@ intersectStates (InternalState m1 r1 b1) (InternalState m2 r2 b2) =
     InternalState (Map.intersectionWith (><) m1 m2) (r1 >< r2) (b1 && b2)
 
 getFunctionType :: InternalState -> String -> Maybe ([PyType], PyType)
-getFunctionType st id =
-    (>>=) (getVariableType st id) $ \t -> case t of
+getFunctionType st id' =
+    (>>=) (getVariableType st id') $ \t -> case t of
         (Functional a b) -> return (map snd a, b)
         _ -> Nothing
 
@@ -38,7 +38,7 @@ addVariableType :: String -> PyType -> InternalState -> InternalState
 addVariableType str typ (InternalState m1 r b) = InternalState (Map.insert str typ m1) r b
 
 addAll :: [(String, PyType)] -> InternalState -> InternalState
-addAll lst init = foldl (\st (str, typ) -> addVariableType str typ st) init lst
+addAll lst init' = foldl (\st (str, typ) -> addVariableType str typ st) init' lst
 
 hasVariable :: String -> InternalState -> Bool
 hasVariable vid = isJust . flip getVariableType vid

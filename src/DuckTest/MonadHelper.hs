@@ -8,8 +8,6 @@ import Data.Foldable (forM_)
 import DuckTest.Monad
 import Text.Printf
 
-import Data.Maybe
-
 {- Emit a potentially undefined variable warning-}
 possibleUndefinedError :: String -> a -> DuckTest a ()
 possibleUndefinedError = emitWarning . printf "Possible undefined variable %s"

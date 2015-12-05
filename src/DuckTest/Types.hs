@@ -11,9 +11,7 @@ module DuckTest.Types
 
 import DuckTest.Internal.Common hiding (union, (<>))
 
-import qualified Data.Set as Set
 import qualified Data.Map as Map
-import Debug.Trace
 
 import Control.Arrow
 import Control.Monad.Writer.Lazy hiding (Any, (<>))
@@ -62,9 +60,6 @@ fromList m = Scalar m . Map.fromList
 singleton :: String -> PyType -> PyType
 singleton str = Scalar Nothing . Map.singleton str
 
-singletonAny :: String -> PyType
-singletonAny = flip singleton Any
-
 union :: PyType -> PyType -> PyType
 {-| The union of two PyTypes. This returs a third PyType that is
  - "larger" than the previous two. That means it matches more things,
@@ -84,8 +79,8 @@ union = union'
     union' (Scalar s1 m1) (Scalar s2 m2) = Scalar (unionStr s1 s2) $ Map.unionWith union m1 m2
         where
             unionStr Nothing Nothing = Nothing
-            unionStr s1 s2 | s1 == s2 = s1
-            unionStr s1 s2 = Just $ printf "(%s)&(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
+            unionStr s1' s2' | s1' == s2'  = s1'
+                           | otherwise = Just $ printf "(%s)&(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
 
     union' sc@Scalar {} f@Functional {} = sc `union` singleton "__call__" f
     union' (Functional args1 ret1) (Functional args2 ret2) =
@@ -115,8 +110,8 @@ intersection = intersection'
     intersection' (Scalar s1 m1) (Scalar s2 m2) = Scalar (interStr s1 s2) $ Map.intersectionWith intersection m1 m2
         where
             interStr Nothing Nothing = Nothing
-            interStr s1 s2 | s1 == s2 = s1
-            interStr s1 s2 = Just $ printf "(%s)|(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
+            interStr s1' s2' | s1' == s2' = s1'
+                             | otherwise = Just $ printf "(%s)|(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
     intersection' sc@Scalar {} f@Functional {} = intersection sc (singleton "__call__" f)
     intersection' (Functional args1 ret1) (Functional args2 ret2) =
         Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
@@ -152,12 +147,13 @@ difference' dif (Functional args1 ret1) (Functional args2 ret2) =
                     (dif ret1 ret2)
                     in if isVoidFunction almost then Void else almost
 difference' dif f@Functional {} t = dif t f
-difference' dif t1@Alpha {} t2 | hasSameName t1 t2 = Void
-difference' dif t1 t2@Alpha {} | hasSameName t1 t2 = Void
+difference' _   t1@Alpha {} t2 | hasSameName t1 t2 = Void
+difference' _   t1 t2@Alpha {} | hasSameName t1 t2 = Void
 difference' dif (Alpha _ t1) (Alpha _ t2) = Alpha "" $ dif t1 t2
 difference' dif (Alpha _ s1) t2 = Alpha "" $ dif s1 t2
 difference' dif t1 (Alpha _ s1) = Alpha "" $ dif t1 s1
 
+difference2 :: PyType -> PyType -> PyType
 difference2 Alpha {} _ = Void
 difference2 _ Alpha {} = Void
 difference2 Any _ = Void
@@ -190,22 +186,19 @@ toVoid :: PyType -> PyType
 toVoid v | isVoid v = Void
 toVoid x = x
 
-isCompatibleAs :: PyType -> PyType -> Bool
+isCompatibleAs :: PyType -> PyType -> PyType
 {-| Check ot see if type `larger` is compatible with `smaller`.
-    While this function theorectcally checks smaller - larger == Void,
+    While this function theorectcally check so smaller - larger == Void,
     this function will add the guard making anything compatible with the
     Any type -}
-isCompatibleAs smaller = isVoid . isCompatibleAs' smaller
-
-isCompatibleAs' :: PyType -> PyType -> PyType
-isCompatibleAs' Any _ = Void
-isCompatibleAs' _ Any = Void
-isCompatibleAs' smaller larger = difference2 smaller larger
+isCompatibleAs Any _ = Void
+isCompatibleAs _ Any = Void
+isCompatibleAs smaller larger = difference2 smaller larger
 
 getAttribute :: String -> PyType -> Maybe PyType
 {-| return the attribute of a type, or Nothing if
  - there is no such attribute. -}
-getAttribute att (Scalar _ map) = Map.lookup att map
+getAttribute att (Scalar _ map') = Map.lookup att map'
 getAttribute "__call__" f@Functional {} = Just f
 getAttribute att (Alpha _ t) = getAttribute att t
 getAttribute _ _ = Nothing
@@ -229,7 +222,10 @@ instance Unwrapbable UnionType PyType where
 instance Unwrapbable IntersectionType PyType where
     unwrap (Intersect x) = x
 
+(><) :: PyType -> PyType -> PyType
 (><) = intersection
+
+(<>) :: PyType -> PyType -> PyType
 (<>) = union
 
 mkAlpha :: PyType -> PyType
@@ -237,49 +233,50 @@ mkAlpha s@(Scalar name _) = Alpha (fromMaybe "" name) s
 mkAlpha s = Alpha "" s
 
 liftFromDotList :: [String] -> PyType -> PyType
-liftFromDotList list init = foldr singleton init list
+liftFromDotList list init' = foldr singleton init' list
 
 prettyType :: PyType -> String
 prettyType = prettyType' False
 
+prettyType' :: Bool -> PyType -> String
 prettyType' b (Alpha "" s) = "alpha " ++ prettyType'' b s
 prettyType' b t = prettyType'' b t
 
 prettyType'' :: Bool -> PyType -> String
-prettyType'' descend typ = execWriter $ prettyType' 0 typ
+prettyType'' descend typ = execWriter $ prettyType_ 0 typ
     where
-          prettyType' indent (Scalar (Just name) s) = tell name >> when descend (tell " " >> prettyType' indent (Scalar Nothing s))
-          prettyType' indent (Scalar Nothing attrs) = do
+          prettyType_ indent (Scalar (Just name) s) = tell name >> when descend (tell " " >> prettyType_ indent (Scalar Nothing s))
+          prettyType_ indent (Scalar Nothing attrs) = do
                 tell "{ "
                 let lst = Map.toList attrs
                 unless (null lst) $  do
-                    let ((attr, typ):t) = lst
+                    let ((attr, atttyp):t) = lst
                     let attrplus = attr ++ " :: "
                     tell attrplus
-                    prettyType' (indent + length attrplus + 2) typ
-                    forM_ t $ \(attr, typ) -> do
+                    prettyType_ (indent + length attrplus + 2) atttyp
+                    forM_ t $ \(forattr, foratttyp) -> do
                         tell "\n"
                         tab indent
-                        let attrplus = ", " ++ attr ++ " :: "
-                        tell attrplus
-                        prettyType' (indent + length attrplus) typ
+                        let forattrplus = ", " ++ forattr ++ " :: "
+                        tell forattrplus
+                        prettyType_ (indent + length forattrplus) foratttyp
                 tell "} "
 
-          prettyType' indent (Functional args ret) = do
+          prettyType_ indent (Functional args ret) = do
              tell "( "
              unless (null args) $ do
                  let ((_, h):t) = args
-                 prettyType' (indent + 2) h
-                 forM_ t $ \(_, typ) -> do
+                 prettyType_ (indent + 2) h
+                 forM_ t $ \(_, fortyp) -> do
                      tell "\n, "
-                     prettyType' (indent + 2) typ
+                     prettyType_ (indent + 2) fortyp
              tell ") -> "
-             prettyType' (indent + 1) ret
+             prettyType_ (indent + 1) ret
 
-          prettyType' _ Any = tell "Any"
-          prettyType' _ (Alpha nam _) = tell $ "alpha " ++ nam
+          prettyType_ _ Any = tell "Any"
+          prettyType_ _ (Alpha nam _) = tell $ "alpha " ++ nam
 
-          prettyType' _ Void = tell "Void"
+          prettyType_ _ Void = tell "Void"
 
           tab :: Int -> Writer String ()
           tab indent = forM_ [1..indent] $ const $ tell " "
@@ -293,24 +290,21 @@ isVoidFunction _ = False
 stripAlpha :: PyType -> PyType
 stripAlpha a@Alpha {} = stripAlpha' a
 stripAlpha (Functional args ret) = Functional (map (second stripAlpha) args) (stripAlpha ret)
-stripAlpha (Scalar n map) = Scalar n $ Map.map stripAlpha map
+stripAlpha (Scalar n m) = Scalar n $ Map.map stripAlpha m
 stripAlpha x = x
 
+stripAlpha' :: PyType -> PyType
 stripAlpha' (Alpha _ a) = stripAlpha' a
 stripAlpha' x = x
 
 {- No news is good news. Check to see if t1 is smaller than t2 -}
 matchType :: PyType -> PyType -> Maybe TypeError
 matchType t1 t2 =
-        case isCompatibleAs' t1 t2 of
+        case isCompatibleAs t1 t2 of
             t | isVoid t -> Nothing
-            (Scalar _ map) -> Just (Difference t1 t2 map)
-            (Alpha _ (Scalar _ map)) -> Just (Difference t1 t2 map)
+            (Scalar _ m) -> Just (Difference t1 t2 m)
+            (Alpha _ (Scalar _ m)) -> Just (Difference t1 t2 m)
             _ -> Just (Incompatible t1 t2)
-
-setTypeName :: String -> PyType -> PyType
-setTypeName s (Scalar _ m) = Scalar (Just s) m
-setTypeName _ t = t
 
 getCallType :: PyType -> Maybe PyType
 getCallType t@Functional {} = Just t

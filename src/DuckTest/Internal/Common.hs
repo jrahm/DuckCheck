@@ -40,4 +40,5 @@ when' cond fn = cond >>= flip when fn
 (<.<) :: (Monad m) => (a -> c) -> (b -> m a) -> b -> m c
 (<.<) f1 f2 arg = f1 <$> f2 arg
 
+foldM' :: (Monad m) => a -> [b] -> (a -> b -> m a) -> m a
 foldM' a b c = foldM c a b

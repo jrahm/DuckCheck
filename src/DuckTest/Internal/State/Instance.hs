@@ -3,7 +3,6 @@
 module DuckTest.Internal.State.Instance where
 
 import DuckTest.Checker
-import qualified Data.Map as Map
 import DuckTest.Internal.Common hiding (union)
 import DuckTest.Internal.State
 import DuckTest.Internal.Format
@@ -13,7 +12,6 @@ import DuckTest.Infer.Functions
 import DuckTest.Infer.Expression
 import DuckTest.Infer.Classes
 import DuckTest.Types
-import DuckTest.MonadHelper
 
 import DuckTest.AST.Util
 import DuckTest.Parse
@@ -104,12 +102,12 @@ handleClass state name body pos = do
      - type less the self parameter. Finally, we ad a __call__ method
      - to the class with the same parameters as __init__ but returns
      - an instance type.... classes are a bitch to deal with.-}
-    staticVarsState <- foldM' mempty body $ \state stmt ->
+    staticVarsState <- foldM' mempty body $ \curstate stmt ->
         case stmt of
-            (Assign [Var (Ident vname _) _] ex pos) -> do
-                 inferredType <- inferTypeForExpression state ex
-                 return $ addVariableType vname inferredType state
-            _ -> return state
+            (Assign [Var (Ident vname _) _] ex _) -> do
+                 inferredType <- inferTypeForExpression curstate ex
+                 return $ addVariableType vname inferredType curstate
+            _ -> return curstate
 
     let staticVarType = stateToType staticVarsState
     let newstate = addVariableType name staticVarType state
@@ -117,17 +115,17 @@ handleClass state name body pos = do
                           case stmt of
                             Fun {} -> Just stmt
                             _ -> Nothing) body
-    let staticClassType@(Scalar _ m) = staticVarType `union` stateToType (differenceStates staticClassState newstate)
-    let newstate = addVariableType name staticClassType state
+    let staticClassType@Scalar {} = staticVarType `union` stateToType (differenceStates staticClassState newstate)
+    let nextstate = addVariableType name staticClassType state
 
-    boundType <- toBoundType name staticClassType <$> findSelfAssignments newstate body
+    boundType <- toBoundType name staticClassType <$> findSelfAssignments nextstate body
     let classFunctionalType = initType boundType
     let staticClassType' = staticClassType `union` classFunctionalType
-    let newstate = addVariableType name staticClassType' state
+    let laststate = addVariableType name staticClassType' state
 
     matchBoundWithStatic pos boundType staticClassType'
 
-    return newstate
+    return laststate
 
 handleAssign :: InternalState -> String -> Expr a -> a -> DuckTest a InternalState
 {-| Handle an assignment. a = <expr>. This will extend the state
@@ -152,8 +150,7 @@ handleConditional state guards elsebody = do
                   runChecker state stmts
 
     elseState <- runChecker state elsebody
-    let intersect = foldl intersectStates elseState endStates
-    return intersect
+    return $ foldl intersectStates elseState endStates
 
 instance CheckerState InternalState where
     foldFunction currentState statement = do
@@ -165,7 +162,7 @@ instance CheckerState InternalState where
         case statement of
 
             (Import [ImportItem dotted@(_:_) as pos] _) ->
-                let dottedpaths@(h:t) = map (\(Ident name _) -> name) dotted in
+                let (h:t) = map (\(Ident name _) -> name) dotted in
                 handleImport currentState (h, t) (getIdentifier =<< as) pos
 
             (Return expr pos) ->
@@ -174,7 +171,7 @@ instance CheckerState InternalState where
             Fun {} ->
                 handleFunction currentState statement
 
-            ex@(Class (Ident name _) [] body pos) ->
+            (Class (Ident name _) [] body pos) ->
                 handleClass currentState name body pos
 
 

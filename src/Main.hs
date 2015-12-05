@@ -2,15 +2,13 @@ module Main where
 
 import DuckTest.Internal.Common
 
-import Language.Python.Version2.Parser as P2
-import Language.Python.Version3.Parser as P3
 
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
 import System.IO
 
-import Data.Set (Set, fromList)
+import Data.Set (fromList)
 
 import DuckTest.Flags
 import DuckTest
@@ -47,7 +45,7 @@ main = (>>=) getArgs $ \argv ->
 
             (args, fs, []) -> do
                 let files = if null fs then ["-"] else fs
-                runFilesWithArgs args fs
+                runFilesWithArgs args files
 
             (_, _, errs) -> do
                 hPutStrLn stderr (concat errs ++ usageInfo header flags)
