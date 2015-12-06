@@ -31,7 +31,7 @@ import DuckTest.Infer.Expression
  - of the type [args] -> return type. All the types are in a
  - structural format -}
 inferTypeForFunction :: InternalState -> Statement a -> DuckTest a PyType
-inferTypeForFunction state (Fun (Ident _ _) params _ body _) =
+inferTypeForFunction state (Fun (Ident name _) params _ body _) =
 
     {- Get a list of the names of the parameters to the function. For
      - each of those parameters, try to infer the type of each.
@@ -41,11 +41,13 @@ inferTypeForFunction state (Fun (Ident _ _) params _ body _) =
         parameterIdentifiers = map (tryGetIdentifier "") params
 
         returnType = Any -- cannot yet infer return type
+
+        newstate = addVariableType name (Functional (map (const ("",Any)) params) Any) state
         in
 
         flip Functional returnType <$>
                 (zip parameterIdentifiers <$>
-                 mapM (flip (inferTypeForVariable state) body) parameterIdentifiers)
+                 mapM (flip (inferTypeForVariable newstate) body) parameterIdentifiers)
 
 
 inferTypeForFunction _ _ =
@@ -63,7 +65,7 @@ observeTypeForExpression state expr stmts = do
          - body of statements. In each expression, we look to see
          - how the parameter is being used. -}
             fn <- unwrap <$> mconcatMapM (Union <.< observeExpr) (allExpressions stmts)
-            Debug %%! duckf expr " :: " fn
+            Debug %%! duckf "Observe " expr " :: " fn
             return fn
 
         where

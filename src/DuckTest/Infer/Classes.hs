@@ -47,7 +47,9 @@ findSelfAssignments state statements =
         tryIntersect :: PyType -> String -> PyType -> PyType
         tryIntersect typ attname atttype =
             let curattr = fromMaybe Any (getAttribute attname typ)
-                toadd = curattr `intersection` atttype
+                toadd = case curattr of
+                            Any -> atttype
+                            t1 -> t1 `intersection` atttype
                 in
                 trace (printf "toAdd %s, curattr %s, atttype %s"
                         (prettyType toadd) (prettyType curattr) (prettyType atttype)) $
@@ -89,7 +91,7 @@ toBoundType name (Scalar _ m2) selfAssign =
                                  (Functional (_:as) r) -> Just (Functional as r)
                                  _ -> Nothing
         in
-    selfAssign `union` boundFns
+    setTypeName name $ selfAssign `union` boundFns
 toBoundType _ _ _ = undefined
 
 rewireAlphas :: PyType -> PyType
@@ -98,7 +100,7 @@ rewireAlphas :: PyType -> PyType
 rewireAlphas typ = rewireAlphas' typ typ
 
 rewireAlphas' :: PyType -> PyType -> PyType
-rewireAlphas' top (Alpha Any) = Alpha top
+rewireAlphas' top (Alpha Void) = trace ("rewire to " ++ show top) $ Alpha top
 rewireAlphas' top (Functional args ret) = Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
 rewireAlphas' top (Scalar s m) = Scalar s (Map.map (rewireAlphas' top) m)
 rewireAlphas' _ x = x

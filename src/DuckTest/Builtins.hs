@@ -90,7 +90,7 @@ intAttrs =
          "bit_length", "conjugate", "denominator", "from_bytes",
          "imag", "numerator", "real", "to_bytes", "__div__"]
     `mappend`
-        [("__add__", Functional [("", mkAlpha intType)] (mkAlpha intType)),
+        [("__add__", Functional [("", Alpha intType)] (Alpha intType)),
          ("__str__", Functional [] strType)]
 
 stringAttrs :: [(String, PyType)]
@@ -121,7 +121,7 @@ stringAttrs =
           "splitlines", "startswith", "strip", "swapcase",
           "title", "translate", "upper", "zfill"]
     `mappend`
-        [("__add__", Functional [("", mkAlpha strType)] (mkAlpha strType))]
+        [("__add__", Functional [("", Alpha strType)] (Alpha strType))]
 
 sysAttrs :: [(String, PyType)]
 sysAttrs =

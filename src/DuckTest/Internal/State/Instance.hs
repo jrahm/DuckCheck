@@ -109,7 +109,7 @@ handleClass state name body pos = do
                  return $ addVariableType vname inferredType curstate
             _ -> return curstate
 
-    let staticVarType = stateToType staticVarsState `union` Functional [] (Alpha Any)
+    let staticVarType = stateToType staticVarsState `union` Functional [] (Alpha Void)
     let newstate = addVariableType name staticVarType state
     staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
                           case stmt of

@@ -19,7 +19,9 @@ inferTypeForExpressionNoStrip state expr =
       (Call callexpr args pos) -> do
           exprType <- checkCallExpression state callexpr args pos
           case getCallType exprType of
-              Just (Functional _ ret) -> return ret
+              Just (Functional _ ret) -> do
+                Info %%! duckf "The type of " callexpr " returns type " ret
+                return ret
               _ -> return Any
 
       (Dot subexpr (Ident att _) pos) -> do
@@ -39,10 +41,7 @@ inferTypeForExpressionNoStrip state expr =
 inferTypeForExpression :: InternalState -> Expr e -> DuckTest e PyType
 inferTypeForExpression state expr = do
     Trace %%! duckf "TEST => " expr
-    ret <- inferTypeForExpressionNoStrip state expr
-
-    Debug %%! duckf expr " :: " (stripAlpha ret)
-    return (stripAlpha ret)
+    inferTypeForExpressionNoStrip state expr
 
 
 checkCallExpression :: InternalState -> Expr e -> [Argument e] -> e -> DuckTest e PyType
