@@ -36,7 +36,7 @@ getStartPos sp = case sp of
     (SpanPoint fn r c) -> Just (fn, r, c)
     _ -> Nothing
 
-runDuckTestOnOneFile :: Set Flag -> LogLevel -> FilePath -> IO ()
+runDuckTestOnOneFile :: Set Flag -> LogLevel -> FilePath -> IO Bool
 runDuckTestOnOneFile flags ll file = do
     st <- runDuckTestIO flags ll (runDuckTestM file)
     isTerm <- queryTerminal (Fd 1)
@@ -44,6 +44,9 @@ runDuckTestOnOneFile flags ll file = do
     let (styleBegin, styleEnd) =
             if isTerm then ("\x1b[01;31m", "\x1b[0m") else ("", "")
 
-    forM_ (sort $ getWarnings st) $ \(err, pos) ->
+    let warnings = getWarnings st
+    forM_ warnings $ \(err, pos) ->
         whenJust (getStartPos pos) $ \(f, r, c) ->
             hPutStr stderr $ printf "%s%s(%d:%d):%s %s\n" styleBegin f r c styleEnd err
+
+    return (null warnings)

@@ -20,7 +20,7 @@ inferTypeForExpressionNoStrip state expr =
           exprType <- checkCallExpression state callexpr args pos
           case getCallType exprType of
               Just (Functional _ ret) -> do
-                Info %%! duckf "The type of " callexpr " returns type " ret
+                Trace %%! duckf "The type of " callexpr " returns type " ret
                 return (pure ret)
               _ -> return (pure Any)
 

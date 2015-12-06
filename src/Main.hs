@@ -31,10 +31,11 @@ flags = [  Option ['2'] [] (NoArg Version2)
                     _ -> Verbose Trace
 
 runFilesWithArgs :: [Flag] -> [String] -> IO ()
-runFilesWithArgs opts =
+runFilesWithArgs opts files =
     let (Verbose ll) = fromMaybe (Verbose Warn) $ listToMaybe (filter isVerboseFlag opts)
-        optset = fromList opts in
-            mapM_ (runDuckTestOnOneFile optset ll)
+        optset = fromList opts in do
+            ret <- and <$> mapM (runDuckTestOnOneFile optset ll) files
+            unless ret $ exitWith (ExitFailure 1)
 
     where isVerboseFlag (Verbose _) = True
           isVerboseFlag _ = False
