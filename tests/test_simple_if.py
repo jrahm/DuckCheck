@@ -3,9 +3,9 @@ def collatz(n):
         return 0
     else:
         if n % 2 == 0:
-            1 + collatz(n / 2)
+            return 1 + collatz(n / 2)
         else:
-            1 + collatz(n * 3 + 1)
+            return 1 + collatz(n * 3 + 1)
 
 class Duck:
     def __init__(self):

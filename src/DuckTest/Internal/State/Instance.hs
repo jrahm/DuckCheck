@@ -57,7 +57,8 @@ handleFunction :: InternalState SrcSpan -> Statement SrcSpan -> DuckTest SrcSpan
 handleFunction st fun@Fun {fun_name = (Ident name _), fun_body=body} =
     return $ addVariableTypeDeferred name (Deferred fn) st
     where
-        fn state = do
+        fn state' = do
+            let state = biasedUnion state' st
             functionType <- inferTypeForFunction state fun
             let newstate = addVariableType name functionType state
             case functionType of
@@ -115,13 +116,18 @@ handleClass state name body pos = do
             _ -> return curstate
 
     staticVarType <- union <$> stateToType staticVarsState <*> pure (Functional [] (Alpha Void))
+    Trace %%! duckf "StaticVarType for Class " name " = " staticVarType
     let newstate = addVariableType name staticVarType state
+    Trace %%! duckf "New state = " (intercalate ", " (stateDir newstate))
     staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
                           case stmt of
                             Fun {} -> Just stmt
                             _ -> Nothing) body
     staticClassType@Scalar {} <- (union <$> pure staticVarType <*> stateToType (differenceStates staticClassState newstate))
+    Trace %%! duckf "StatiClassType for Class " name " = " staticClassType
     let nextstate = addVariableType name staticClassType state
+
+    Trace %%! duckf "Before bound type"
 
     boundType <- rewireAlphas <$>
                  toBoundType name staticClassType <$>
@@ -195,7 +201,7 @@ handleAttributeAssign state lhs att rhs = do
 
 instance CheckerState (InternalState SrcSpan) where
     foldFunction currentState statement = do
-        Trace %%! duckf "check: " statement
+        Trace %%! duckf Blue statement Green " - " (intercalate ", " (stateDir currentState)) Reset
 
         when (returnHit currentState) $
             warn (annot statement) $ duckf "Dead code"

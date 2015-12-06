@@ -81,6 +81,9 @@ evalVariableType st str =
             ret <- runDeferred st x
             return (Just ret)
 
+stateDir :: InternalState e -> [String]
+stateDir (InternalState m _ _) = Map.keys m
+
 getVariableType :: InternalState e -> String -> Maybe (Deferred e PyType)
 getVariableType (InternalState map' _ _) str = Map.lookup str map'
 
@@ -120,3 +123,6 @@ modifyVariableType var fn (InternalState m a b) =
 getReturnType :: InternalState e -> PyType
 getReturnType (InternalState _ _ False) = Void
 getReturnType (InternalState _ ret _) = ret
+
+biasedUnion :: InternalState e -> InternalState e -> InternalState e
+biasedUnion (InternalState m1 r b) (InternalState m2 _ _) = (InternalState (Map.union m1 m2) r b)

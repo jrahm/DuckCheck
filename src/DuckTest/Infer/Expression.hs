@@ -13,7 +13,9 @@ inferTypeForExpressionNoStrip state expr =
 
       (Var (Ident name pos) _) ->
           maybe' (getVariableType state name)
-              (warn pos (duckf "The identifier " name " may not be defined") >> return (pure Any))
+              (do
+                Trace %%! duckf "Identifier " name " not in state " (intercalate ", " (stateDir state))
+                warn pos (duckf "The identifier " name " may not be defined") >> return (pure Any))
               return
 
       (Call callexpr args pos) -> do
