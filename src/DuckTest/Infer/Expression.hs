@@ -11,8 +11,9 @@ inferTypeForExpressionNoStrip :: InternalState e -> Expr e -> DuckTest e (Deferr
 inferTypeForExpressionNoStrip state expr =
     case expr of
 
-      (Var (Ident name pos) _) ->
-          maybe' (getVariableType state name)
+      (Var (Ident name pos) _) -> do
+          typ <- getVariableType state name
+          maybe' typ
               (warn pos (duckf "The identifier " name " may not be defined") >> return (pure Any))
               return
 

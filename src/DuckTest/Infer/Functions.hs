@@ -89,7 +89,6 @@ observeTypeForExpression state expr stmts = do
          -
          - This observation is of function(..., x, ...)-}
         observeExpr outerexpr@(Call callex args _) = do
-                 traceM ("Observe call type: " ++ prettyText outerexpr)
                  observeLhs <- observeExpr callex
                  calltyp <- ignore $ runDeferred state =<< inferTypeForExpression state callex
                  maybe' (getCallType calltyp) (iterateOverChildren outerexpr) $
@@ -104,7 +103,6 @@ observeTypeForExpression state expr stmts = do
                                     case getExpression expr' of
 
                                         ex | ex `exprEq` expr  ->
-                                            trace ("typ " ++ prettyType exprType) $
                                             return exprType
 
 

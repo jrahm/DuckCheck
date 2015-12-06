@@ -55,7 +55,7 @@ handleFunction :: InternalState SrcSpan -> Statement SrcSpan -> DuckTest SrcSpan
  - parameters via type-observation, then we infer via type matching the
  - return type of the function -}
 handleFunction st fun@Fun {fun_name = (Ident name _), fun_body=body} =
-    return $ addVariableTypeDeferred name (Deferred fn) st
+    addVariableTypeDeferred name (Deferred fn) st
     where
         fn state = do
             functionType <- inferTypeForFunction state fun
@@ -84,7 +84,7 @@ handleForLoop state targets generator body elsebody pos = do
                                 Just (name, generatorVariableType)
                             _ -> Nothing
 
-    let forLoopInitState = addAllDeferred newVariables state
+    forLoopInitState <- addAllDeferred newVariables state
     afterForLoopState <- runChecker forLoopInitState body
     afterElseState <- runChecker state elsebody
     return $ intersectStates afterForLoopState afterElseState
@@ -111,7 +111,7 @@ handleClass state name body pos = do
         case stmt of
             (Assign [Var (Ident vname _) _] ex _) -> do
                  inferredType <- inferTypeForExpression curstate ex
-                 return $ addVariableTypeDeferred vname inferredType curstate
+                 addVariableTypeDeferred vname inferredType curstate
             _ -> return curstate
 
     staticVarType <- union <$> stateToType staticVarsState <*> pure (Functional [] (Alpha Void))

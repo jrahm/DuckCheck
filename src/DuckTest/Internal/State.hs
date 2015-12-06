@@ -61,28 +61,35 @@ intersectStates :: InternalState e -> InternalState e -> InternalState e
 intersectStates (InternalState m1 r1 b1) (InternalState m2 r2 b2) =
     InternalState (Map.intersectionWith deferredIntersection m1 m2) (r1 >< r2) (b1 && b2)
 
-getFunctionType :: InternalState e -> String -> Deferred e (Maybe ([PyType], PyType))
-getFunctionType st id' =
-    let t = getVariableType st id' in
-    case t of
-        Just (Deferred f) -> Deferred $ \state -> getFunctionType' <$> (f state)
-        Just (Calculated typ) -> Calculated $ getFunctionType' typ
-        Nothing -> Calculated Nothing
+getFunctionType :: InternalState e ->
+                   String ->
+                   DuckTest e (Deferred e (Maybe ([PyType], PyType)))
+getFunctionType st id' = do
+    t <- getVariableType st id'
+    return $
+        case t of
+            Just (Deferred f) -> Deferred $ \state -> getFunctionType' <$> (f state)
+            Just (Calculated typ) -> Calculated $ getFunctionType' typ
+            Nothing -> Calculated Nothing
     where getFunctionType' t =
             case t of
                 (Functional a b) -> return (map snd a, b)
                 _ -> Nothing
 
 evalVariableType :: InternalState e -> String -> DuckTest e (Maybe PyType)
-evalVariableType st str =
-    case getVariableType st str of
+evalVariableType st str = do
+    typ <- getVariableType st str
+    case typ of
         Nothing -> return Nothing
         Just x -> do
             ret <- runDeferred st x
             return (Just ret)
 
-getVariableType :: InternalState e -> String -> Maybe (Deferred e PyType)
-getVariableType (InternalState map' _ _) str = Map.lookup str map'
+getVariableType' :: InternalState e -> String -> Maybe (Deferred e PyType)
+getVariableType' (InternalState map' _ _) str = Map.lookup str map'
+
+getVariableType :: InternalState e -> String -> DuckTest e (Maybe (Deferred e PyType))
+getVariableType st str = return $ getVariableType' st str
 
 addVariableType :: String -> PyType -> InternalState e -> InternalState e
 addVariableType str typ (InternalState m1 r b) = InternalState (Map.insert str (Calculated typ) m1) r b
@@ -90,14 +97,28 @@ addVariableType str typ (InternalState m1 r b) = InternalState (Map.insert str (
 addAll :: [(String, PyType)] -> InternalState e -> InternalState e
 addAll lst init' = foldl (\st (str, typ) -> addVariableType str typ st) init' lst
 
-addVariableTypeDeferred :: String -> Deferred e PyType -> InternalState e -> InternalState e
-addVariableTypeDeferred str typ (InternalState m1 r b) = InternalState (Map.insert str typ m1) r b
+addVariableTypeDeferred :: String -> Deferred e PyType -> InternalState e -> DuckTest e (InternalState e)
+addVariableTypeDeferred str typ (InternalState m1 r b) = do
+    typ' <- realType typ
+    return $ InternalState (Map.insert str typ' m1) r b
 
-addAllDeferred :: [(String, Deferred e PyType)] -> InternalState e -> InternalState e
-addAllDeferred lst init' = foldl (\st (str, typ) -> addVariableTypeDeferred str typ st) init' lst
+    where realType (Deferred fn) = do
+            duckRef <- newDuckRef Nothing
+            return $ Deferred $ \st' -> do
+                cache <- readDuckRef duckRef
+                case cache of
+                    Nothing -> do
+                        t <- fn st'
+                        writeDuckRef (Just t) duckRef
+                        return t
+                    Just t -> return t
+          realType t = return $ t
+
+addAllDeferred :: [(String, Deferred e PyType)] -> InternalState e -> DuckTest e (InternalState e)
+addAllDeferred lst init' = foldM (\st (str, typ) -> addVariableTypeDeferred str typ st) init' lst
 
 hasVariable :: String -> InternalState e -> Bool
-hasVariable vid = isJust . flip getVariableType vid
+hasVariable vid (InternalState m _ _) = Map.member vid m
 
 emptyState :: InternalState e
 emptyState = mempty
