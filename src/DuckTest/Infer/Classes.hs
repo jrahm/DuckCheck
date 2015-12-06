@@ -24,7 +24,7 @@ import Control.Arrow
  - like self.x = expr. It then knows that if expr :: t then
  - self :: {x :: t} u tau (where tau is the rest of the type of self)
  -}
-findSelfAssignments :: forall a. InternalState -> [Statement a] -> DuckTest a PyType
+findSelfAssignments :: forall a. InternalState a -> [Statement a] -> DuckTest a PyType
 findSelfAssignments state statements =
     foldM traceAssignments Void $ functionList statements
     where
@@ -40,7 +40,7 @@ findSelfAssignments state statements =
 
                 (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] ex _) -> do
                     inferred <- inferTypeForExpressionNoStrip (addVariableType "self" typ state) ex
-                    return (tryIntersect typ att inferred)
+                    (tryIntersect typ att <$> runDeferred state inferred)
 
                 _ -> return typ
 
@@ -73,7 +73,7 @@ matchBoundWithStatic pos bound (Scalar _ m) =
     forM_ (map snd $ Map.toList m) $ \typ ->
         case typ of
             (Functional ((_, self):_) _) ->
-                whenJust (matchType self bound)
+                whenJust (matchType "" self bound)
                     (warnTypeError pos)
             _ -> return ()
 matchBoundWithStatic _ _ _ = undefined

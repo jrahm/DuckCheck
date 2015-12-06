@@ -16,7 +16,7 @@
 
 module DuckTest.Infer.Functions (inferTypeForFunction) where
 
-import DuckTest.Internal.Common
+import DuckTest.Internal.Common hiding (union)
 
 import DuckTest.Monad
 import DuckTest.AST.Util
@@ -30,7 +30,7 @@ import DuckTest.Infer.Expression
  - of this function. The type infered from this function is
  - of the type [args] -> return type. All the types are in a
  - structural format -}
-inferTypeForFunction :: InternalState -> Statement a -> DuckTest a PyType
+inferTypeForFunction :: InternalState a -> Statement a -> DuckTest a PyType
 inferTypeForFunction state (Fun (Ident name _) params _ body _) =
 
     {- Get a list of the names of the parameters to the function. For
@@ -56,10 +56,10 @@ inferTypeForFunction _ _ =
 
 {- Collects and infers the type of a variable name over
  - the span of the list of statements given. -}
-inferTypeForVariable :: forall e. InternalState -> String -> [Statement e] -> DuckTest e PyType
+inferTypeForVariable :: forall e. InternalState e -> String -> [Statement e] -> DuckTest e PyType
 inferTypeForVariable state varname = observeTypeForExpression state (Var (Ident varname ()) ())
 
-observeTypeForExpression :: InternalState -> Expr b -> [Statement e] -> DuckTest e PyType
+observeTypeForExpression :: InternalState e -> Expr b -> [Statement e] -> DuckTest e PyType
 observeTypeForExpression state expr stmts = do
         {- This function, we walk through each expression in the
          - body of statements. In each expression, we look to see
@@ -89,7 +89,9 @@ observeTypeForExpression state expr stmts = do
          -
          - This observation is of function(..., x, ...)-}
         observeExpr outerexpr@(Call callex args _) = do
-                 calltyp <- ignore $ inferTypeForExpression state callex
+                 traceM ("Observe call type: " ++ prettyText outerexpr)
+                 observeLhs <- observeExpr callex
+                 calltyp <- ignore $ runDeferred state =<< inferTypeForExpression state callex
                  maybe' (getCallType calltyp) (iterateOverChildren outerexpr) $
                     \typ -> case typ of
                         (Functional paramsType  _) -> do
@@ -102,12 +104,13 @@ observeTypeForExpression state expr stmts = do
                                     case getExpression expr' of
 
                                         ex | ex `exprEq` expr  ->
+                                            trace ("typ " ++ prettyType exprType) $
                                             return exprType
 
 
                                         ex -> observeExpr ex
 
-                            unwrap <$> mconcatMapM (Union <.< inferTypeFromArguments) (zip args $ map snd paramsType)
+                            union <$> pure observeLhs <*> (unwrap <$> mconcatMapM (Union <.< inferTypeFromArguments) (zip args $ map snd paramsType))
 
                         _ -> return Void
 

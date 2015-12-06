@@ -1,20 +1,8 @@
 {-# LANGUAGE TupleSections #-}
 module DuckTest.Builtins where
 
-import DuckTest.Internal.State
 import DuckTest.Types
 import Text.Printf
-
-initState :: InternalState
-initState =
-    addVariableType "hasattr" (Functional [("", Any), ("", strType)] Any) $
-    addVariableType "print" (Functional [("", Any)] Any) $
-    addVariableType "len" (Functional [("", fromList Nothing $ map (,Any) ["__len__"])] Any) $
-    addVariableType "str" (Functional [("", fromList Nothing $ map (,Any) ["__str__"])] strType) $
-    addVariableType "int" (Functional [("", Any)] intType) $
-    addVariableType "set" (Functional [] setType) $
-    addVariableType "list" (Functional [] $ listType Any)
-    emptyState
 --
 -- builtinGlobalFunctions :: Map String Function
 -- builtinGlobalFunctions =

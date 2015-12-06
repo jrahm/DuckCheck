@@ -55,14 +55,14 @@ duckf :: (DuckShowable a, LogResult r) => a -> r
 duckf = logr
 
 warnTypeError :: e -> TypeError -> DuckTest e ()
-warnTypeError pos (Incompatible t1 t2) =
-    warn pos $ duckf "Incompatible types " Green (unwrapAlpha t1) Reset " and " Green (unwrapAlpha t2) Reset
-warnTypeError pos (Difference t1 t2 dif) =
+warnTypeError pos (Incompatible str t1 t2) =
+    warn pos $ duckf "In expression `" str "`: Incompatible types " Green (unwrapAlpha t1) Reset " and " Green (unwrapAlpha t2) Reset
+warnTypeError pos (Difference str t1 t2 dif) =
     warn pos $ do
         attrsNeeded <-
                 forM (Map.toList dif) $ \(key, typ) ->
                     duckf key " :: " typ :: DuckTest e String
-        duckf "'" Green (unwrapAlpha t2) Reset "' incompatible as '" Green (unwrapAlpha t1) Reset "'. Missing attributes needed: '" Green (intercalate ", " attrsNeeded) Reset "'"
+        duckf "In expression `" str "`:'" Green (unwrapAlpha t2) Reset "' incompatible as '" Green (unwrapAlpha t1) Reset "'. Missing attributes needed: '" Green (intercalate ", " attrsNeeded) Reset "'"
 
 data Ansi = Green | Red | Yellow | Blue | Reset | Bold
 

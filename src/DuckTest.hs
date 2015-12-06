@@ -14,9 +14,11 @@ import DuckTest.Checker
 import DuckTest.Flags
 import DuckTest.Monad
 import DuckTest.AST.Preprocess
-import DuckTest.Builtins
 import DuckTest.Parse
+import DuckTest.Internal.State.Init
+import DuckTest.Internal.State
 import DuckTest.Internal.State.Instance()
+
 
 runDuckTestM :: FilePath -> DuckTest SrcSpan ()
 runDuckTestM fp =
@@ -25,7 +27,7 @@ runDuckTestM fp =
                 let stmts = preprocess stmts'
                 Trace %% intercalate "\n" (map prettyText stmts)
                 unless' (hasFlag PreprocessOnly) $
-                    runChecker_ initState stmts
+                    runChecker_ (initState :: InternalState SrcSpan) stmts
 
 getStartPos :: SrcSpan -> Maybe (String, Int, Int)
 getStartPos sp = case sp of

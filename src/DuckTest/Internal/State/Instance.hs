@@ -1,5 +1,7 @@
 {-| A module that is the implementation of the CheckerState class
     for the InternalState class -}
+
+{-# LANGUAGE FlexibleInstances #-}
 module DuckTest.Internal.State.Instance where
 
 import DuckTest.Checker
@@ -16,15 +18,15 @@ import DuckTest.Types
 import DuckTest.AST.Util
 import DuckTest.Parse
 
-import DuckTest.Builtins
+import DuckTest.Internal.State.Init
 
-handleImport :: InternalState -> (String, [String]) -> Maybe String -> SrcSpan -> DuckTest SrcSpan InternalState
+handleImport :: InternalState SrcSpan -> (String, [String]) -> Maybe String -> SrcSpan -> DuckTest SrcSpan (InternalState SrcSpan)
 {-| Handle the observation of an import statement. This relies
  - on the DuckTest monad to pull in the correct module into its
  - state. We then check the module and lift it into its own object-}
 handleImport state (h, t) as pos =  do
     modType <- ignore $ makeImport pos (h:t) parsePython $ \stmts ->
-        stateToType <$> runChecker initState stmts
+        stateToType =<< runChecker initState stmts
 
     maybe' modType (return state) $ \a -> do
         Debug %%! duckf "Module " h " :: " a
@@ -37,36 +39,39 @@ handleImport state (h, t) as pos =  do
             Just name ->
                 return $ addVariableType name a state
 
-handleReturn :: InternalState -> Maybe (Expr e) -> e -> DuckTest e InternalState
+handleReturn :: InternalState e -> Maybe (Expr e) -> e -> DuckTest e (InternalState e)
 {-| Handle the observation of a return statement. THis will
  - tell the current state that a return was hit and the return
  - type was given. -}
 handleReturn state expr' pos | returnHit state = return state
                              | otherwise =
                                 let expr = fromMaybe (None pos) expr' in
-                                flip setReturnType state <$>
-                                    inferTypeForExpression state expr
+                                flip setReturnType state <$> (runDeferred state =<<
+                                    inferTypeForExpression state expr)
 
-handleFunction :: InternalState -> Statement SrcSpan -> DuckTest SrcSpan InternalState
+handleFunction :: InternalState SrcSpan -> Statement SrcSpan -> DuckTest SrcSpan (InternalState SrcSpan)
 {-| Handles a function observation `def <function>(...): ...'. When
  - this happens, there are two phases; we attempt to infer the type of the
  - parameters via type-observation, then we infer via type matching the
  - return type of the function -}
-handleFunction state fun@Fun {fun_name = (Ident name _), fun_body=body} = do
-    functionType <- inferTypeForFunction state fun
-    let newstate = addVariableType name functionType state
-    case functionType of
-       (Functional args _) -> do
-          ret <- getReturnType <$> runChecker (addAll args newstate) body
-          let newfntype = Functional args ret
-          Info %%! duckf "\n(Inferred) " name " :: " newfntype "\n"
-          return $ addVariableType name newfntype state
-       _ -> do
-           Warn %% "This should not happen, infer type of function returned a type that isn't a function."
-           return state
+handleFunction st fun@Fun {fun_name = (Ident name _), fun_body=body} =
+    return $ addVariableTypeDeferred name (Deferred fn) st
+    where
+        fn state = do
+            functionType <- inferTypeForFunction state fun
+            let newstate = addVariableType name functionType state
+            case functionType of
+               (Functional args _) -> do
+                  ret <- getReturnType <$> runChecker (addAll args newstate) body
+                  let newfntype = Functional args ret
+                  Info %%! duckf "\n(Inferred) " name " :: " newfntype "\n"
+                  return newfntype
+               _ -> do
+                   Warn %% "This should not happen, infer type of function returned a type that isn't a function."
+                   return Void
 handleFunction state _ = return state
 
-handleForLoop :: InternalState -> [Expr SrcSpan] -> Expr SrcSpan -> [Statement SrcSpan] -> [Statement SrcSpan] -> SrcSpan -> DuckTest SrcSpan InternalState
+handleForLoop :: InternalState SrcSpan -> [Expr SrcSpan] -> Expr SrcSpan -> [Statement SrcSpan] -> [Statement SrcSpan] -> SrcSpan -> DuckTest SrcSpan (InternalState SrcSpan)
 handleForLoop state targets generator body elsebody pos = do
     generatorVariableType <-
         inferTypeForExpression state
@@ -79,13 +84,13 @@ handleForLoop state targets generator body elsebody pos = do
                                 Just (name, generatorVariableType)
                             _ -> Nothing
 
-    let forLoopInitState = addAll newVariables state
+    let forLoopInitState = addAllDeferred newVariables state
     afterForLoopState <- runChecker forLoopInitState body
     afterElseState <- runChecker state elsebody
     return $ intersectStates afterForLoopState afterElseState
 
 
-handleClass :: InternalState -> String -> [Statement SrcSpan] -> SrcSpan -> DuckTest SrcSpan InternalState
+handleClass :: InternalState SrcSpan -> String -> [Statement SrcSpan] -> SrcSpan -> DuckTest SrcSpan (InternalState SrcSpan)
 {-| Handle observing a class.-}
 handleClass state name body pos = do
     {- This is done in several parts thanks to Python's annoying
@@ -106,16 +111,16 @@ handleClass state name body pos = do
         case stmt of
             (Assign [Var (Ident vname _) _] ex _) -> do
                  inferredType <- inferTypeForExpression curstate ex
-                 return $ addVariableType vname inferredType curstate
+                 return $ addVariableTypeDeferred vname inferredType curstate
             _ -> return curstate
 
-    let staticVarType = stateToType staticVarsState `union` Functional [] (Alpha Void)
+    staticVarType <- union <$> stateToType staticVarsState <*> pure (Functional [] (Alpha Void))
     let newstate = addVariableType name staticVarType state
     staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
                           case stmt of
                             Fun {} -> Just stmt
                             _ -> Nothing) body
-    let staticClassType@Scalar {} = staticVarType `union` stateToType (differenceStates staticClassState newstate)
+    staticClassType@Scalar {} <- (union <$> pure staticVarType <*> stateToType (differenceStates staticClassState newstate))
     let nextstate = addVariableType name staticClassType state
 
     boundType <- rewireAlphas <$>
@@ -132,49 +137,53 @@ handleClass state name body pos = do
 
     return laststate
 
-handleAssign :: InternalState -> String -> Expr a -> a -> DuckTest a InternalState
+handleAssign :: InternalState a -> String -> Expr a -> a -> DuckTest a (InternalState a)
 {-| Handle an assignment. a = <expr>. This will extend the state
  - to include the variable a with the type inferred from expr. If
  - the type happens to be inferred to be a void type, then a warning
  - is emitted warning of the void type usage. -}
 handleAssign state vname ex pos = do
-    inferredType <- inferTypeForExpression state ex
+    inferredType <- runDeferred state =<< inferTypeForExpression state ex
 
     when (isVoid inferredType) $
         warn pos $ duckf "Void type not ignored as it ought to be!"
 
     return $ addVariableType vname inferredType state
 
-handleConditional :: InternalState -> [(Expr SrcSpan, [Statement SrcSpan])] -> [Statement SrcSpan] -> DuckTest SrcSpan InternalState
+handleConditional :: (InternalState SrcSpan) -> [(Expr SrcSpan, [Statement SrcSpan])] -> [Statement SrcSpan] -> DuckTest SrcSpan (InternalState SrcSpan)
 {-| Handle a conditional. This will run a checker on all the different branches
     and at the end, intersect all the states before continuing. This includes
     intersecting the types as well. -}
 handleConditional state guards elsebody = do
     endStates <- forM guards $ \(expr, stmts) -> do
-                  let modifiedState = case expr of
-                                            (Call (Var (Ident "hasattr" _) _) [ArgExpr (Var (Ident x _) _) _, ArgExpr (Call (Var (Ident "str" _) _) [ArgExpr (Strings s _) _] _) _] _)
-                                                ->  let s' = takeWhile (/='"') (tail $ concat s) in
-                                                    modifyVariableType x (`union` singleton s' Any) state
-                                            (Call (Dot (Dot (Var (Ident var _) _)
-                                                  (Ident "__class__" _) _)
-                                                  (Ident "__eq__" _) _)
-                                                  [ArgExpr (Var (Ident clazz _) _) _] _)
-                                                ->
-                                                    let instanceType = instanceTypeFromStatic =<< getVariableType state clazz in
-                                                        maybe state (\t -> modifyVariableType var (const t) state) instanceType
-                                            _ -> state
+                  modifiedState <- case expr of
+                                    (Call (Var (Ident "hasattr" _) _) [ArgExpr (Var (Ident x _) _) _, ArgExpr (Call (Var (Ident "str" _) _) [ArgExpr (Strings s _) _] _) _] _)
+                                        ->  let s' = takeWhile (/='"') (tail $ concat s) in
+                                            return $ modifyVariableType x (`union` singleton s' Any) state
+                                    (Call (Dot (Dot (Var (Ident var _) _)
+                                          (Ident "__class__" _) _)
+                                          (Ident "__eq__" _) _)
+                                          [ArgExpr (Var (Ident clazz _) _) _] _)
+                                        -> do
+                                            vartyp <- evalVariableType state clazz
+                                            let instanceType = instanceTypeFromStatic =<< vartyp
+
+                                            maybe (return state)
+                                                (\t -> return (modifyVariableType var (const t) state))
+                                                instanceType
+                                    _ -> return state
                   _ <- inferTypeForExpression state expr
                   runChecker modifiedState stmts
 
     elseState <- runChecker state elsebody
     return $ foldl intersectStates elseState endStates
 
-handleAttributeAssign :: InternalState -> Expr a -> String -> Expr a -> DuckTest a InternalState
+handleAttributeAssign :: InternalState a -> Expr a -> String -> Expr a -> DuckTest a (InternalState a)
 handleAttributeAssign state lhs att rhs = do
     rhsType <- inferTypeForExpression state rhs
     _ <- inferTypeForExpression state lhs
 
-    let typeToAssign = singleton att rhsType
+    typeToAssign <- singleton att <$> (runDeferred state rhsType)
     return $ assignType lhs typeToAssign
 
     where
@@ -184,7 +193,7 @@ handleAttributeAssign state lhs att rhs = do
     assignType _ _ = state
 
 
-instance CheckerState InternalState where
+instance CheckerState (InternalState SrcSpan) where
     foldFunction currentState statement = do
         Trace %%! duckf "check: " statement
 

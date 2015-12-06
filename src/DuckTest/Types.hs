@@ -282,20 +282,21 @@ prettyType'' descend typ = execWriter $ prettyType_ 0 typ
           tab :: Int -> Writer String ()
           tab indent = forM_ [1..indent] $ const $ tell " "
 
-data TypeError = Incompatible PyType PyType | Difference PyType PyType (Map String PyType)
+data TypeError = Incompatible String PyType PyType | Difference String PyType PyType (Map String PyType)
 
 isVoidFunction :: PyType -> Bool
 isVoidFunction (Functional args ret) = all (isVoid . snd) (("",ret):args)
 isVoidFunction _ = False
 
 {- No news is good news. Check to see if t1 is smaller than t2 -}
-matchType :: PyType -> PyType -> Maybe TypeError
-matchType t1 t2 =
+matchType :: (Pretty a) => a -> PyType -> PyType -> Maybe TypeError
+matchType expr t1 t2 =
+        let str = prettyText expr in
         case isCompatibleAs t1 t2 of
             t | isVoid t -> Nothing
-            (Scalar _ m) -> Just (Difference t1 t2 m)
-            (Alpha (Scalar _ m)) -> Just (Difference t1 t2 m)
-            _ -> Just (Incompatible t1 t2)
+            (Scalar _ m) -> Just (Difference str t1 t2 m)
+            (Alpha (Scalar _ m)) -> Just (Difference str t1 t2 m)
+            _ -> Just (Incompatible str t1 t2)
 
 getCallType :: PyType -> Maybe PyType
 getCallType t@Functional {} = Just t
