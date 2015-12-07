@@ -102,6 +102,7 @@ observeTypeForExpression state expr stmts = do
                                     case getExpression expr' of
 
                                         ex | ex `exprEq` expr  ->
+                                            trace ("typ " ++ prettyType exprType) $
                                             return exprType
 
 

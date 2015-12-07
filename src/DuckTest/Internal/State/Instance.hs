@@ -120,13 +120,14 @@ handleClass state name body pos = do
 
     boundType <- rewireAlphas <$>
                  toBoundType name staticClassType <$>
-                 findSelfAssignments nextstate body
+                 findSelfAssignments staticClassType nextstate body
 
     Info %%! duckf "Bound type " boundType
 
     let classFunctionalType = initType boundType
     let staticClassType' = rewireAlphas' boundType (staticClassType `union` classFunctionalType)
     let laststate = addVariableType name staticClassType' state
+
 
     matchBoundWithStatic pos boundType staticClassType'
 
@@ -140,7 +141,7 @@ handleAssign :: InternalState -> String -> Expr a -> a -> DuckTest a InternalSta
 handleAssign state vname ex pos = do
     inferredType <- inferTypeForExpression state ex
 
-    when (isVoid inferredType) $
+    when (isVoid2 inferredType) $
         warn pos $ duckf "Void type not ignored as it ought to be!"
 
     return $ addVariableType vname inferredType state

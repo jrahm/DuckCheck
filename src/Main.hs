@@ -19,7 +19,9 @@ flags = [  Option ['2'] [] (NoArg Version2)
          , Option ['v'] [] (OptArg verbosity "0-4")
             "Run in verbose logging mode."
          , Option ['P'] [] (NoArg PreprocessOnly)
-            "Stop after preprocessing"]
+            "Stop after preprocessing"
+         , Option "" ["cache-scopes"] (NoArg PreprocessOnly)
+            "Enables scope caching which can be a lot faster, but not as thourough"]
      where
         verbosity Nothing = Verbose Info
         verbosity (Just s) = case s of

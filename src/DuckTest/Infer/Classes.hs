@@ -51,9 +51,7 @@ findSelfAssignments state statements =
                             Any -> atttype
                             t1 -> t1 `intersection` atttype
                 in
-                trace (printf "toAdd %s, curattr %s, atttype %s"
-                        (prettyType toadd) (prettyType curattr) (prettyType atttype)) $
-                (setAttribute attname toadd typ)
+                setAttribute attname toadd typ
 
 {- From a PyType, get the init function from it. If we cannot get the
  - init function from it, we simply create an itit function type. -}
@@ -100,7 +98,8 @@ rewireAlphas :: PyType -> PyType
 rewireAlphas typ = rewireAlphas' typ typ
 
 rewireAlphas' :: PyType -> PyType -> PyType
-rewireAlphas' top (Alpha Void) = trace ("rewire to " ++ show top) $ Alpha top
+rewireAlphas' top (Alpha Void) = Alpha top
+rewireAlphas' top (Alpha t) = rewireAlphas' top t
 rewireAlphas' top (Functional args ret) = Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
 rewireAlphas' top (Scalar s m) = Scalar s (Map.map (rewireAlphas' top) m)
 rewireAlphas' _ x = x
