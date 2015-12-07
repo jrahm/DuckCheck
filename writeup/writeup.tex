@@ -2,6 +2,7 @@
 
 \usepackage{graphicx}
 \usepackage{minted}
+\usepackage{latexsym}
 \usepackage{color}
 \usepackage{fancyhdr}
 \usepackage[margin=1.0in]{geometry}
@@ -9,18 +10,25 @@
 \usepackage{titlesec}
 \usepackage{filecontents}
 \usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\usemintedstyle{autumn}
 
 \definecolor{secblue}{rgb}{0.18, 0.27, 0.33}
+
+\newcommand*{\fvtextcolor}[2]{\textcolor{#1}{#2}}
 
 \input{style.tex}
 
 \pagestyle{plain}
 
 \title{DuckTest}
-\subtitle{{\textcolor{bardark}{A Brief Tour of Static Duck Type Checking for Python}}}
-\author{Joshua Rahm \\
-\footnotesize Department of Computer Science \\[2pt]
-\footnotesize University of Colorado}
+\subtitle{{\textcolor{bardark}{Type Checking Duck-Typed Python Source}}}
+\author{\href{http://jarahm.com/}{Joshua Rahm} \\
+\footnotesize Department of Computer Science \\
+\footnotesize University of Colorado \\
+\footnotesize \href{https://github.com/jrahm/DuckTest}{github.com/jrahm/DuckTest}
+}
 \date{}
 
 
@@ -190,7 +198,7 @@ as a basic procedural function type, that takes some arguments and returns
 some other type. Python has the concept of varadic arguments, currently,
 these are not modeled along with keyword and positional arguments.
 
-\subsubsection*{Alpha Types}
+\subsubsection*{$\alpha$-Types}
 
 \mintinline{haskell}{Alpha String PyType}
 
@@ -201,16 +209,14 @@ a LinkedList. Under a purely structural model, this type may not be represented
 since the type inferencer would never terminate as the type
 would look something like
 
-\vspace{0.2cm}
-$LinkedList = \{data::Any,next::\{data::Any,next::\{data::Any,next::\{\ldots\}\}\}\}$
-\vspace{0.2cm}
-
+\maths
+{LinkedList =\\\{data\hastype Any,\\next\hastype \{data\hastype Any,\\next\hastype \{data\hastype Any,\\next\hastype \{\ldots\}\}\}\}}
 This is where the alpha type comes in. Under this system
 a LinkedList would have the type
 
-\vspace{0.2cm}
-$LinkedList = \{data::Any,next::alpha LinkedList\}$.
-\vspace{0.2cm}
+\maths{
+LinkedList = \{data\hastype Any,\\next\hastype \alpha\ LinkedList\}
+}
 
 Alpha types exist purely as a pragmatic guard. The formal type algebra does
 not need them, but that is simply because the formal algebra does not need
@@ -256,32 +262,461 @@ The union operator in the PyType algebra is the operator that takes
 two types $t_1$ and $t_2$ and returns a type $t_3$ such that $t_3$ can
 act as either $t_1$ or $t_2$.
 
+There are some laws for unions, for example, \emph{Any} union with any
+other type is \emph{Any}
+
+\maths{Any\cup t = Any}
+
+likewise, \emph{Void} union with any other type $t$ is $t$.
+
+\maths{Void\cup t = t}
+
+finally, the union operator is commutative
+
+\maths{t_1\cup t_2 = t_2\cup t_1}
+
 The key to the union type is that the type returned can itself match more
 types, and can be used in more locations, but, it is also more difficult
 to match against that type. This makes sense since $t_3$ is guaranteed
 to have at least the number of attributes as its constituents.
 
 The definition of union for scalars is fairly straightforward, it simply
-recursively unions all the attributes of $t_1$ and $t_2$. So if
+recursively unions all the attributes of $t_1$ and $t_2$. So
 
-$t_1 = \{a :: A, b :: B_1, c :: C_1\}$
+\maths{%
+    \begin{array}{ll}
+        t_1 &= \{a \hastype  A, b \hastype  B_1, c \hastype  C_1\} \\
+        t_2 &= \{c \hastype  C_2, b \hastype  B_2, d \hastype  D\} \\
+        t_1 \cup_r t_2 &= \{a \hastype  A, b \hastype  B_1 \cup_r B_2, c \hastype  C_1 \cup_r C_2, d \hastype  D\} \\
+    \end{array}
+}
 
-and
+The union of a functional type and a scalar type results in a scalar with all
+the same attributes of the scalar, but with an attribute \emph{\_\_call\_\_}
+that is set to the functional type. This is because Python allows any type to
+be called as long as that type implements \emph{\_\_call\_\_}.
 
-$t_2 = \{c :: C_2, b :: B_2, d :: D\}$
+\maths{%
+    S \cup F = S\cup singleton\ ``\_\_call\_\_"\ F
+}
 
-then
+Between two functions, the union type is a little counter-intuitive. Rather
+than the union of all parameter types and the return types, it is actually the
+\emph{intersection} of the parameter types and the union of the return types.
 
-$t_1 \cup_r t_2 = \{a :: A, b :: B_1 \cup_r B_2, c :: C_1 \cup_r C_2, d :: D\}$
+\maths{F\ p_1\ r_1\cup F\ p_2\ r_2\allowbreak=
+    F\ \{p\cap q | (p,q) \in zip(p_1,p_2)\}\ (r_1\cup r_2)
+}
 
-For other types of types, it gets a little stranger. For example, the union
-of two functions is actually the \emph{intersection} of the parameter types
-and the union of the return types. The theory behind this is discussed later
-in the paper.
+The reasoning for this is because of what union is tring to portray. Union
+is taking two types and returning a type that can match against either of
+the operands.  By converse, an intersection of two types returns a type
+that both operands can match against. So, qualitatively, if there
+exists two functions $f_1$ and $f_2$ such that $f_1$ takes a $str$
+as a parameter and $f_2$ takes an $int$, the union $f_1\cup f_2$ must
+return a function that can act as either, meaning that it must accept
+both an int and a string as an argument. This requires the parameter type to
+be the \emph{intersection} between $int$ and $str$.
+
+\subsubsection*{Intersection}
+
+The last section gave a good dose of intersection, but we have not actually
+defined what intersection is. In some ways, intersection is the convers of
+union; while the union of $t_1$ and $t_2$ creates $t_3$ such that $t_3$ will
+match with either $t_1$ or $t_2$, intersection is the opposite, it returns
+a $t_3$ such that $t_1$ and $t_2$ both match against $t_3$. In a sense, union
+always returs a type ``greater than or equal to'' the operands while
+intersection always returns a type ``less than or equal to'' the operands.
+
+Many of the rules are simply complements of those for union, although the two
+operators are not necessarily opposites.
+
+\maths{Void\cap t=Void}
+
+\maths{Any\cap t=t}
+
+\maths{t_1\cap t_2=t_2\cap t_1}
+
+\maths{t\cap t = t\cup t = t}
+
+The intersection of scalar types is very similar to the union of scalar types;
+it takes the intersection of the two attribute maps and recursively
+intersects the collisions.
+
+\maths{\{a\hastype t_1, b\hastype t_2\}\cap \{a\hastype t_3, c\hastype t_4\} = \{a\hastype t_1\cap t_3\}}
+
+Like union, the intersection between a scalar $s$ and a function $f$
+is a scalar that is the intersection between $s$ and a promoted function%
+\footnote{$promotion(f) = singleton\ ``\_\_call\_\_"\ f$}.
+
+\maths{s\cap f=s\cap singleton\ ``\_\_call\_\_"\ f}
+
+Finally, the intersection of two functions is the opposite of the union
+between two functions, rather than taking the intersection between the
+parameters, we actually take the union.
+
+\maths{F\ p_1\ r_1\cap F\ p_2\ r_2 = F \{p\cup q| (p,q)\in zip(p_1,p_2)\} (r_1\cap r_2)}
+
+\subsubsection*{Difference}
+
+The final primary operator of this algebra is the difference operator.
+The difference operator is in a way a third wheel to the other two. It
+does not return a type that is particularly useful as a type. The difference
+between a type $t_1\not = Any$ and $t_2\not = Void$ would be a type $t_3$ that cannont act
+as either operand and such that either operand cannot act as $t_3$. Where
+this operator does come in handy is determining if $t_1$ is larger than $t_2$.
+If $t_2\geq t_1$ then $t_1\setminus t_2 = Void$, and this is important for
+type matching. First some rules.
+
+\maths{%
+    \begin{array}{ll}
+        Any\setminus t &= Any \\
+        Void\setminus t &= Void \\
+        t\setminus Void &= t \\
+        t\setminus Any &= Void \\
+        (t_1\cup t_2)\setminus t_1 = t_2
+    \end{array}
+}
+
+Beyond that, the difference for two scalars is as one might guess,
+the difference in the attribute maps using difference as a combining
+function. So
+
+\maths{
+\{a\hastype A_1\}\setminus\{a\hastype A_2, b\hastype \beta\} =\\
+{let\ d = A_1 \setminus A_2}\ in\\
+{\quad if\ d = Void}\\{\qquad then\ \{\}}\\{\qquad else\ \{a\hastype d\}}
+}
+
+The difference between a scalar $s$ and a function $f$ is equal
+to $s\setminus promoted(f)$ just like the other operators.
+
+The real difference comes with functions. Unlike the previous,
+the difference between two functions is actually the difference
+between their parameters and the difference between their return
+types:
+
+\maths{F\ p_1\ r_1\setminus F\ p_2\ r_2 = F \{p\setminus q| (p,q)\in zip(p_1,p_2)\} (r_1\setminus r_2)}
+
+With this equation above, it is impossible to actually, technically,
+create $Void$ from this, so we introduce the concept of a ``Void Function''.
+This type is a function type whose parameters all have type $Void$ and returns
+a type $Void$ -- in a pure language a function with this type would be meaningless,
+as it is saying it doesn't use the arguments and returns nothing. However,
+Python is far from a pure language, so this type (specifically with 0 parameters) shows
+up all the time.
+
+\subsubsection*{Algebra on $\alpha$}
+
+During this time, I have ignored the operators effect on the $\alpha$-type.
+I did not forget about it, but intentionally left it out since it only exists
+in a pragmatic sense. Practically, the semantics of the $\alpha$-type is to
+``infect'' all types that touch it. So for any operator $\Box$,
+
+\maths{%
+\begin{array}{ll}
+    \alpha\ t_1 \Box \alpha\ t_2 &= \alpha\ (t_1 \Box t_2)\\
+    \alpha\ t_1 \Box t_2 &= \alpha\ (t_1 \Box t_2)\\
+    t_1 \Box \alpha\ t_2 &= \alpha\ (t_1 \Box t_2)
+\end{array}
+}
+
+While this look infinitely recursive and not actually practical,
+these are just the semantics and since Haskell is lazy-evaluated
+these values are not actually computed until the alpha value is
+unwrapped.
+
+\subsection*{Using the Algebra}
+
+DuckTest uses three primary algorithms to accomplish its goal;
+\emph{Type Inference by Observance}, \emph{Type Inference by Deduction}
+and \emph{Type Matching}.
+
+\subsubsection*{Type Inference by Observance}
+
+\emph{Type Inference by Observance} is the art of inferring the
+type by studying how it is used. This is the algorithm DuckTest
+uses to infer the types of a function's parameters. It infers the
+types by observing how those parameters are used in a function's
+body.
+
+The way this algorithm is implemented is quite simple. For each
+parameter $p$ in the function's parameter list, if we observe in the
+function's body an expression of the form $p.x$ the algorithm collects
+this ``evidence'' and assigns a type to it; usually this is a singleton
+type, in this case $p\hastype \{x\hastype \tau\}$. We call this an ``evidence type''; it is
+not the full type of $p$, but it is a part of it. There's a problem
+though, what is $\tau$? We obtain $\tau$ by running the same type observance
+algorithm under the same body, but on the expression $p.x$ rather than $p$ itself.
+
+Now, if we observe $p$ being passed to a function $f\hastype t_f$ as the
+$n^{th}$ parameter, the evidence type is returned is the type of that
+$n^{th}$ parameter in $t_f$. If for some reason there is an error (like
+there is no $n^{th}$ parameter or the function $f$ cannot be resolved),
+then the evidence type returned is $Void$.
+
+If we observe $p$ being called, as in $p(arg0,\ldots)$ then we rerun
+the algorithm on all the arguments to get the type of the arguments
+$\tau_{a1}, \tau_{a2}, \ldots$ finally, we rerun the algorithm on
+the whole expression to get the type of the return type $\tau_r$.
+Finally, our evidence type is $Functional\ \{\tau_a,\ldots\}\ \tau_r$.
+
+Lastly, if we observe $x = p$ then we rerun the algorithm on the expression
+$x$ to get our new evidence type.
+
+After the algorithm collects all the evidence types, it takes the union
+of all of them to get the \emph{smallest complete type of $p$} which is
+the observed to be the type of that parameter. During this phase of
+the checking, the return type of this current function is said to be $Any$.
+Return types are found using \emph{Type Inference by Deduction}.
+
+\subsubsection*{Type Inference by Deduction}
+
+\emph{Type Inference by Deduction} is a fairly simple algorithm. It primarily
+consists of inferring the type of an object at its assignment based purely
+on the return type of the function is is being set equal to. There is a little
+more to the story than that, for example, type inference by deduction will
+track the type through a branching statement. If in one branch, the variable
+$v$ is deduced to have some type $t_1$ and in the other branch, $v\hastype t_2$,
+then on the other side of the branches, $v\hastype t_1\cap t_2$.
+
+This is how a return type from a function is deduced as well. The tracer algorithm
+will go through a function body and find all the return expressions and
+deduce the types returned. At the end, the function is said to return the
+\emph{intersection} of all these types. This has the very nice side effect
+of if a function is missing a return down a branch, the function is then
+deduced to return $Void$ which will show up as a warning when a result
+from the erroneous function is used.
+
+\subsubsection*{Type Matching}
+
+The last primary algorithm used is this concept of \emph{Type Matching}.
+Type matching happens on arguments being passed to functions. When
+an expression of the form $f(\ldots, arg, \ldots)$ is found, we match
+$arg$ with the parameter type of $f$ at that position.
+
+How does one tell if two types are match? The easiest way is to check
+and see if the expected type $t_e$ (type of the parameter) differenced
+with the actual type $t_a$ (deduced type of the argument) equals $Void$
+($t_e\setminus t_a = Void$). If this statement is true, then the types
+match\ldots in as strict sense. There is one exception to the rule.
+
+Because of the dynamism of Python, and in the interest of keeping
+the false positives to a minimum, the $Any$ type should match anything
+and anything should match the $Any$ type. So the actual predicate for
+match is defined as follows:
+
+\maths{%
+\begin{array}{ll}
+    *\ matches\ Any\\
+    Any\ matches\ *\\
+  t_e\setminus t_a = Void &\Rightarrow  t_a\ matches\ t_e
+\end{array}
+}
+
+It is very important to note that $t_a\ matches\ t_e \not\Rightarrow t_e\ matches\ t_a$
+in fact, it's the near opposite. $t_a\ matches\ t_e \land t_a\not=t_e \Rightarrow \lnot(t_e\ matches\ t_a)$
+In short, if $t_a$ matches $t_e$, then, unless $t_a = t_e$, $t_e$ will \emph{not} match $t_a$.
+
+\subsection*{Tracing}
+
+\subsubsection*{Assignments}
+As alluded to, DuckTest uses a tracing algorithm that traces the possible
+execution state of the interpreter with regards to types. The tracer essentially
+is a giant fold over the parsed syntax tree using a glorified map of variables
+to types as the state. In its simplest form, it looks for assignments
+to variables and when it finds one it updates its map with the deduced
+type for that variable.
+
+
+\subsubsection*{Functions}
+When a function definition is encountered, the function type is observed
+and the tracer will then trace the function under a new state, the union
+of the current state and the parameters of the function. When the tracer
+returns from the function, it will have deduced the return type of that function
+so the tracer can then continue under its old state except with the function name
+now mapped to the deduced function type.
+
+In actuality, when the tracer finds a function, it will actually defer
+the trace of that function until it is actually used. The reason for this
+is due to how scoping in Python works. In Python, a function can access
+any variable from the outer closure even if that variable had not been assigned
+to or otherwise declared before the point in the code that function definition
+appeared. With out this deferring, false positives about undefined variables
+from the outer scope would happen. This is especially true for mutually recursive
+functions.
+
+\subsubsection*{Classes}
+
+The final element in tracing is how classes are handled. Classes in Python
+have strange semantics, the full usage of will lead to many false positives
+in DuckTest. This makes classes very challenging to deduce the type of, especially
+taking into account potential recursion in the type.
+
+Before beginning, it is important to note that with each class, there are in fact two types
+we deal with: a static type and an instance type. A static type consists of
+the functions and attributes of the class itself, namely the unbound functions
+(functions not tied to an object) and static attributes. The instance type is
+the type of the object created when constructing this class. The instance type
+is the type that colloquially has the same name as the class name.
+
+At a high-level, when the tracer finds a class, it
+will first look for static assignments in that class. It will then
+collect those into a type and assign that type to the class name.
+It will also add a ``\_\_call\_\_'' attribute that returns type $\alpha Void$.
+
+Then it will go through the class and deduce the types of all the unbound
+functions in the class and union those with the type of that class.
+
+Then we change the static type's ``\_\_call\_\_'' attribute to have the same type
+as the ``\_\_init\_\_'' call, except with $\alpha\ Void$ as the return type.
+
+The tracer will then create a \emph{instance} type from the class type.  It
+does this first by collecting all the unbound methods and stripping the first
+argument from all of them. Then it will collect all self-assignments
+(expressions of patter $self.attribute = expr$) from the body of the class and
+use those to determine what attributes a class has and deduce each attribute's
+type.
+
+Finally, there is one more step. Remember that $\alpha$ thing? That is for
+recursive types like that linked list example. Before we are done constructing
+the types for this class, we must go through and "rewire the alphas". This
+means all attributes and subattributes of the instance type and static types
+with the type $\alpha\ Void$, we change to be $\alpha\ t$ where $t$ is our bound
+type.
+
+At the end of it all, we have created a new state with one measly change,
+the class name has been mapped to the static type of the class. That's counter-intuitive,
+but remember that the instance type still is reachable as the return type
+of the static type's ``\_\_call\_\_'' method.
+
+\subsubsection*{Imports}
+
+Import statements are actually a refreshingly simple task after classes.
+
+One may have already noticed that the state the tracer carries around is
+already actually a scalar type! Think about it; it has a map of variable names
+to types, which is exactly what a structural type has. This makes it very easy
+to deal with imports. Import statements in Python (generally) refer to some file
+on disk. Finding this file is a relatively simple (although tedious) process, but
+once the file is located, we can simply trace the file like any other, get the
+finishing state of the tracer, lift that state to a type, and set the appropriate
+variable to that type.
+
+There is one wrinkle with this, and that is that modules can import each other
+recursively. To combat this, DuckTest will cache the ``type'' of a module as
+$Any$ before tracing that module. When the trace is complete, DuckTest will
+then cache the real type of the module so as to quickly be able to access
+it again if an import appears elsewhere.
+
+\section*{Results}
+
+DuckTest is still in early stages of development and is still far from being
+useful on large-scale applications. In spite of this, however, DuckTest
+is showing great promise and here are some examples to show.
+
+All of these examples were also tested against frosted, pep257, pep8,
+prospector, pyflakes and pylint for good measure.
+
+\subsection*{Simple Duck Test}
+\inputcode{examples/duck.py}
+
+Under this program, no lint checker found the error
+on line 29 of the program. DuckTest was able to find
+this error. It was able to deduce that the argument
+to \emph{doStuff} needs to have a \emph{swim} method,
+which does not exist for a \emph{Person} class. The actual
+error returned was
+\begin{Verbatim}[commandchars=&\[\]]
+&fvtextcolor[red][writeup/examples/duck.py(29:1)]:
+In expression `person`:
+    '&fvtextcolor[darkgreen][Person]' incompatible as
+        '&fvtextcolor[darkgreen][{ swim, talk, walk }]'.
+Missing attributes needed:
+    '&fvtextcolor[darkgreen][swim :: () -> Void]'
+\end{Verbatim}
+This is fairly easy to read. It gives as well as a list of
+needed parameters.
+
+\subsection*{Recursion and String Concatenation}
+
+\inputcode{examples/collatz.py}
+
+This program has a couple of interesting factors in it.
+There is recursion, but the real error is trying to concatenate
+an int with a string. This is personally one of the most annoying
+runtime errors of them all, but DuckTest can detect these bugs.
+
+
+\begin{Verbatim}[commandchars=&\[\]]
+&fvtextcolor[red][writeup/examples/collatz.py(9:7)]:
+    In expression `collatz(int(9))`:
+     '&fvtextcolor[darkgreen][int]' incompatible as '&fvtextcolor[darkgreen][str]'.
+      Missing attributes needed: ...
+\end{Verbatim}
+
+{\footnotesize{(The \ldots are in lieu of the massive number of attributes strings have that ints do not)}}
+
+\subsection*{Linked Lists and Stuff}
+
+\inputcode{examples/linkedlist.py}
+
+This is an example of a recursive type. It is actually a complex problem
+to infer the types in this program, yet DuckTest is able to trace this and
+find a couple of errors.
+
+\begin{Verbatim}[commandchars=&\[\]]
+&fvtextcolor[red][writeup/examples/linkedlist.py(20:7)]:
+ The subexpression head.next.next
+  may have no attribute
+   'q' (head.next.next :: alpha)
+
+&fvtextcolor[red][writeup/examples/linkedlist.py(18:1)]:
+ In expression `cursor`:'&fvtextcolor[darkgreen][LinkedList]'
+  incompatible as '&fvtextcolor[darkgreen][{ __add__ }]'.
+   Missing attributes needed:
+    '&fvtextcolor[darkgreen][__add__ :: ( :: Void) -> Void]'
+\end{Verbatim}
+
+DuckTest successfully found the error where 2 was attempted to be added to
+a \emph{LinkedList} as well as an error where \emph{LinkedList} does not have
+the attribute \emph{q} (which is pretty obvious).
+
+\section*{What Next}
+
+As you can see, DuckTest has shown some promise. It is currently able
+to detect pretty obvious type errors. Areas for expansion include
+having DuckTest figure out the general types of lists and other
+containers to make sure the types being inserted and removed are
+consistent with what are expected.
+
+Of course this sort of feature would have to come under the guard of
+some command-line option because the user could always be intending
+to create an ``object list'' that just happens to be populated with
+all strings.
+
+To take this to more of an extreme, there are a number of ``paranoid'' warnings
+DuckTest could be modified to emit if the user wishes. Potential topics are
+detecting if a type could be $None$ and if that variable is used without a
+guard.
+
+Ultimately, in order for DuckTest to be useful, it needs a vastly expanded
+model for all of the many builtins Python supports as well as better
+handling for imports. (The ``professional'' code in the standard library
+is extremely dynamic!)
+
+Support for things like tuples, tuple unpacking, varadic and keyword arguments
+are yet still unsupported. Although unsupported, it is not impossible and
+models for their handling already do exist.
+
+This, however, is a stepping stone to greater things. When first starting out
+on the project, I was not sure if this would be possible at all thinking Python
+was simply too fluid to do anything; however, with a solid type model and inference
+engine it really is possible to do at least a good amount of static checking
+on Python source code.
 
 \bibliographystyle{abbrv}
 \bibliography{bib}
 
-\vspace{\textheight}
 \end{multicols}
 \end{document}
