@@ -1,3 +1,7 @@
+\usepackage{xhfill}
+\usepackage{breqn}
+
+
 \newcommand{\backslashx}[0]{\textsc{Joshua Rahm}}
 
 \titleformat{\section}
@@ -7,15 +11,16 @@
   {\large\titlefont\color{secblue}}{\thesection}{1em}{}
 
 \titleformat{\subsubsection}
-  {\normalsize\color{black}}{\thesection}{1em}{}
+{\normalsize\titlefont\color{gray}}{\thesection}{1em}{}
 
 \definecolor{bar}{rgb}{0.90, 0.60, 0.30}
 \definecolor{bardark}{rgb}{0.45, 0.30, 0.15}
+\definecolor{darkgreen}{rgb}{0.0, 0.30, 0.0}
 \fancypagestyle{plain}{%
     \fancyhf{}
     % \fancyhead[R]{\textcolor{blue}{\hrule}}
-    \fancyhead[L]{\textcolor{black}{\textbf{\backslashx}}}
-    \fancyhead[R]{\textcolor{black}{\textbf{DuckTest: Static Type Checking for Python}}}
+    \fancyhead[L]{\textcolor{darkgray}{\textbf{\backslashx}}}
+    \fancyhead[R]{\textcolor{darkgray}{\textbf{DuckTest: Static Type Checking for Python}}}
     \renewcommand{\headrulewidth}{2pt}% 2pt header rule
     \renewcommand{\headrule}{\hbox to\headwidth{%
         \color{bar}\leaders\hrule height \headrulewidth\hfill}}
@@ -26,6 +31,16 @@
     \renewcommand{\footrulewidth}{2pt}% 2pt header rule
     \renewcommand{\footrule}{\hbox to\headwidth{%
         \color{bar}\leaders\hrule height \headrulewidth\hfill}}
+}
+
+\newcommand{\hastype}{{\ ::\ }}
+
+\newcommand{\maths}[1]{%
+    \vspace{0.25cm}
+    \begin{dmath*}
+    #1
+    \end{dmath*}
+    \vspace{0.25cm}
 }
 
 \usepackage[framemethod=TikZ]{mdframed}% Required for creating boxes
@@ -53,10 +68,12 @@
 
 \mdfsetup{nobreak=true}
 
-\newcommand{\inputcode}[2]{
-\begin{mdframed}[style=left,frametitle={\color{secblue}\emph{#1}}]
-\begin{minipage}{\textwidth}
-\inputminted{py}{#2}
-\end{minipage}
+\newcommand{\inputcode}[1]{
+\begin{mdframed}[style=left]
+\noindent\makebox[\textwidth][c]{%
+    \begin{minipage}{0.8\textwidth}
+        \inputminted[linenos]{python}{#1}
+    \end{minipage}
+}
 \end{mdframed}
 }
