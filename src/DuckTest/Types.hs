@@ -7,7 +7,7 @@ module DuckTest.Types
     (union, intersection, difference, prettyType, prettyType',
      getCallType, PyType(..), (><), (<>), fromList, mkAlpha,
      TypeError(..), getAttribute, matchType, UnionType(..),
-     IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid,
+     IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid, isVoid2,
      instanceTypeFromStatic, setAttribute, setTypeName, unwrapAlpha)
     where
 
@@ -316,6 +316,11 @@ instanceTypeFromStatic (Scalar _ m) =
         _ -> Nothing
 instanceTypeFromStatic _ = Nothing
 
+isVoid2 :: PyType -> Bool
+isVoid2 (Alpha Void) = True
+isVoid2 (Alpha _) = False
+isVoid2 t = isVoid t
+
 unwrapAlpha :: PyType -> PyType
-unwrapAlpha (Alpha a) = a
+unwrapAlpha (Alpha a) = unwrapAlpha a
 unwrapAlpha t = t

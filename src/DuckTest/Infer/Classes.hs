@@ -24,23 +24,27 @@ import Control.Arrow
  - like self.x = expr. It then knows that if expr :: t then
  - self :: {x :: t} u tau (where tau is the rest of the type of self)
  -}
-findSelfAssignments :: forall a. InternalState a -> [Statement a] -> DuckTest a PyType
-findSelfAssignments state statements =
+findSelfAssignments :: forall a. PyType -> InternalState a -> [Statement a] -> DuckTest a PyType
+findSelfAssignments staticType state statements =
     foldM traceAssignments Void $ functionList statements
     where
-        functionList :: [Statement a] -> [[Statement a]]
+        functionList :: [Statement a] -> [(InternalState a, [Statement a])]
         functionList = mapMaybe $ \stmt ->
                         case stmt of
-                            Fun {fun_body = body} -> Just body
+                            Fun {fun_body = body, fun_name = (Ident name _)} ->
+                                let fnType = getAttribute name staticType in
+                                case fnType of
+                                    (Just (Functional args _)) -> Just (addAll args state, body)
+                                    _ -> Just (state, body)
                             _ -> Nothing
 
-        traceAssignments :: PyType -> [Statement a] -> DuckTest a PyType
-        traceAssignments ini stmts =
+        traceAssignments :: PyType -> (InternalState a, [Statement a]) -> DuckTest a PyType
+        traceAssignments ini (st, stmts) =
             foldM' ini stmts  $ \typ stmt -> case stmt of
 
                 (Assign [Dot (Var (Ident "self" _) _) (Ident att _) _] ex _) -> do
-                    inferred <- inferTypeForExpressionNoStrip (addVariableType "self" typ state) ex
-                    (tryIntersect typ att <$> runDeferred state inferred)
+                    inferred <- inferTypeForExpressionNoStrip (addVariableType "self" typ st) ex
+                    (tryIntersect typ att <$> runDeferred st inferred)
 
                 _ -> return typ
 
@@ -51,9 +55,7 @@ findSelfAssignments state statements =
                             Any -> atttype
                             t1 -> t1 `intersection` atttype
                 in
-                trace (printf "toAdd %s, curattr %s, atttype %s"
-                        (prettyType toadd) (prettyType curattr) (prettyType atttype)) $
-                (setAttribute attname toadd typ)
+                setAttribute attname toadd typ
 
 {- From a PyType, get the init function from it. If we cannot get the
  - init function from it, we simply create an itit function type. -}
@@ -100,7 +102,8 @@ rewireAlphas :: PyType -> PyType
 rewireAlphas typ = rewireAlphas' typ typ
 
 rewireAlphas' :: PyType -> PyType -> PyType
-rewireAlphas' top (Alpha Void) = trace ("rewire to " ++ show top) $ Alpha top
+rewireAlphas' top (Alpha Void) = Alpha top
+rewireAlphas' top (Alpha t) = rewireAlphas' top t
 rewireAlphas' top (Functional args ret) = Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
 rewireAlphas' top (Scalar s m) = Scalar s (Map.map (rewireAlphas' top) m)
 rewireAlphas' _ x = x
