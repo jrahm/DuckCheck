@@ -120,7 +120,7 @@ handleClass state name body pos = do
 
     boundType <- rewireAlphas <$>
                  toBoundType name staticClassType <$>
-                 findSelfAssignments staticClassType nextstate body
+                 findSelfAssignments nextstate body
 
     Info %%! duckf "Bound type " boundType
 
