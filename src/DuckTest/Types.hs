@@ -8,7 +8,7 @@ module DuckTest.Types
      getCallType, PyType(..), (><), (<>), fromList, mkAlpha,
      TypeError(..), getAttribute, matchType, UnionType(..),
      IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid, isVoid2,
-     instanceTypeFromStatic, setAttribute, setTypeName, unwrapAlpha)
+     instanceTypeFromStatic, setAttribute, setTypeName, unwrapAlpha, isAlpha)
     where
 
 import DuckTest.Internal.Common hiding (union, (<>))
@@ -42,7 +42,7 @@ data PyType =   Scalar (Maybe String) (Map String PyType)
               | Functional [(String, PyType)] PyType
               | Any
               | Alpha PyType
-              | Void
+              | Void deriving(Eq)
 
 instance Show PyType where
     show (Scalar name strs) =
@@ -231,7 +231,12 @@ instance Unwrapbable IntersectionType PyType where
 (<>) = union
 
 mkAlpha :: PyType -> PyType
-mkAlpha = Alpha
+mkAlpha t@Alpha {} = t
+mkAlpha t = Alpha t
+
+isAlpha :: PyType -> Bool
+isAlpha Alpha {} = True
+isAlpha _ = False
 
 liftFromDotList :: [String] -> PyType -> PyType
 liftFromDotList list init' = foldr singleton init' list
@@ -240,7 +245,7 @@ prettyType :: PyType -> String
 prettyType = prettyType' False
 
 prettyType' :: Bool -> PyType -> String
-prettyType' b (Alpha s) = "alpha"
+prettyType' _ t | isAlpha t = "alpha"
 prettyType' b t = prettyType'' b t
 
 prettyType'' :: Bool -> PyType -> String

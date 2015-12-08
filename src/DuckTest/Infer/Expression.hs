@@ -17,6 +17,7 @@ inferTypeForExpressionNoStrip state expr =
               return
 
       (Call callexpr args pos) -> do
+          Debug %%! duckf Yellow "Infer call expression: " Blue expr Reset
           exprType <- checkCallExpression state callexpr args pos
           case getCallType exprType of
               Just (Functional _ ret) -> do
