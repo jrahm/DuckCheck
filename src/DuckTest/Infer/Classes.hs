@@ -102,8 +102,9 @@ rewireAlphas :: PyType -> PyType
 rewireAlphas typ = rewireAlphas' typ typ
 
 rewireAlphas' :: PyType -> PyType -> PyType
-rewireAlphas' top (Alpha Void) = Alpha top
-rewireAlphas' top (Alpha t) = rewireAlphas' top t
+rewireAlphas' top (Alpha Void) = mkAlpha (rewireAlphas' top top)
+rewireAlphas' top (Alpha t) = mkAlpha (rewireAlphas' top t)
 rewireAlphas' top (Functional args ret) = Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
 rewireAlphas' top (Scalar s m) = Scalar s (Map.map (rewireAlphas' top) m)
-rewireAlphas' _ x = x
+rewireAlphas' _ Any = Any
+rewireAlphas' _ Void = Void

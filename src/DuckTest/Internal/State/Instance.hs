@@ -59,6 +59,9 @@ handleFunction st fun@Fun {fun_name = (Ident name _), fun_body=body} =
     where
         fn state' = do
             let state = biasedUnion state' st
+
+            Trace %%! duckf Yellow "Running deferred type of function" Reset
+
             functionType <- inferTypeForFunction state fun
             let newstate = addVariableType name functionType state
             case functionType of
@@ -115,7 +118,7 @@ handleClass state name body pos = do
                  return $ addVariableTypeDeferred vname inferredType curstate
             _ -> return curstate
 
-    staticVarType <- union <$> stateToType staticVarsState <*> pure (Functional [] (Alpha Void))
+    staticVarType <- union <$> stateToType staticVarsState <*> pure (Functional [] (mkAlpha Void))
     Trace %%! duckf "StaticVarType for Class " name " = " staticVarType
     let newstate = addVariableType name staticVarType state
     Trace %%! duckf "New state = " (intercalate ", " (stateDir newstate))
@@ -127,18 +130,19 @@ handleClass state name body pos = do
     Trace %%! duckf "StatiClassType for Class " name " = " staticClassType
     let nextstate = addVariableType name staticClassType state
 
-    Trace %%! duckf "Before bound type"
+
+    Debug %%! duckf Blue name " Static Type Before Rewire = " Green staticClassType
 
     boundType <- rewireAlphas <$>
                  toBoundType name staticClassType <$>
                  findSelfAssignments staticClassType nextstate body
 
-    Info %%! duckf "Bound type " boundType
-
     let classFunctionalType = initType boundType
     let staticClassType' = rewireAlphas' boundType (staticClassType `union` classFunctionalType)
     let laststate = addVariableType name staticClassType' state
 
+    Debug %%! duckf Blue name " Instance Type = " Green boundType
+    Debug %%! duckf Blue name " Static Type   = " Green staticClassType'
 
     matchBoundWithStatic pos boundType staticClassType'
 
@@ -151,6 +155,7 @@ handleAssign :: InternalState a -> String -> Expr a -> a -> DuckTest a (Internal
  - is emitted warning of the void type usage. -}
 handleAssign state vname ex pos = do
     inferredType <- runDeferred state =<< inferTypeForExpression state ex
+    Debug %%! duckf vname " = " (prettyText ex) " :: " inferredType
 
     when (isVoid2 inferredType) $
         warn pos $ duckf "Void type not ignored as it ought to be!"

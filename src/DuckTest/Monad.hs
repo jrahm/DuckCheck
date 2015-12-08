@@ -125,8 +125,24 @@ hlog str = lift $ lift $ putStrLn str
 (%%) ll str = do
     level <- logLevel <$> lift get
     when (ll >= level) $
-        forM_ (lines str) $ \line ->
-            hlog $ printf "[%s] - %s" (show ll) line
+        forM_ (lines str) $ \line -> do
+            lls <- mkLL ll
+            hlog $ printf "%s - %s" lls line
+
+    where mkLL ll = do
+            term <- runningInTerminal
+            if term then
+                return (mkLLColor ll)
+                else return $ "[" ++ show ll ++ "]"
+
+          mkLLColor t = "\x1b[" ++ color t ++ "m[" ++ show t ++ "]\x1b[00m"
+
+          color Trace = "34"
+          color Debug = "32"
+          color Info  = "37"
+          color Warn  = "33"
+          color Error = "31"
+
 
 (%%!) :: LogLevel -> DuckTest e String -> DuckTest e ()
 (%%!) ll str = str >>= (%%) ll

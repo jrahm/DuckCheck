@@ -11,14 +11,21 @@ inferTypeForExpressionNoStrip :: InternalState e -> Expr e -> DuckTest e (Deferr
 inferTypeForExpressionNoStrip state expr =
     case expr of
 
-      (Var (Ident name pos) _) ->
+      (Var (Ident name pos) _) -> do
+          Debug %%! duckf Yellow "Infer variable " name " " Blue expr Reset
           maybe' (getVariableType state name)
               (do
                 Trace %%! duckf "Identifier " name " not in state " (intercalate ", " (stateDir state))
                 warn pos (duckf "The identifier " name " may not be defined") >> return (pure Any))
-              return
+              $ \variableType -> do
+                    debug <- case variableType of
+                                    Deferred {} -> duckf "<deferred>" :: DuckTest e String
+                                    Calculated t -> duckf t :: DuckTest e String
+                    Trace %%! duckf "Returning Type: " Yellow debug Reset
+                    return variableType
 
       (Call callexpr args pos) -> do
+          Debug %%! duckf Yellow "Infer call expression: " Blue expr Reset
           exprType <- checkCallExpression state callexpr args pos
           case getCallType exprType of
               Just (Functional _ ret) -> do
@@ -27,6 +34,7 @@ inferTypeForExpressionNoStrip state expr =
               _ -> return (pure Any)
 
       (Dot subexpr (Ident att _) pos) -> do
+          Debug %%! duckf Yellow "Infer dot expression: " Blue expr Reset
           subexprType <- runDeferred state =<< inferTypeForExpression state subexpr
           Trace %% "Infer for type | " ++ prettyText subexpr ++ " :: " ++ prettyType subexprType
           case subexprType of
@@ -36,14 +44,23 @@ inferTypeForExpressionNoStrip state expr =
                           warn pos $ duckf "The subexpression " subexpr " may have no attribute '" att "' (" subexpr " :: " subexprType ")"
                           return (pure Any)
                       Just t -> return (pure t)
-      (Paren subexpr _) -> inferTypeForExpression state subexpr
+      (Paren subexpr _) -> do
+          Debug %%! duckf Yellow "Infer paren expression: " Blue expr Reset
+          inferTypeForExpression state subexpr
       (None _) -> return (pure Any)
       _ -> return (pure Any)
 
 inferTypeForExpression :: InternalState e -> Expr e -> DuckTest e (Deferred e PyType)
-inferTypeForExpression state expr = do
-    Trace %%! duckf "TEST => " expr
-    inferTypeForExpressionNoStrip state expr
+inferTypeForExpression st e = do
+    typ <- inferTypeForExpressionNoStrip st e
+    case typ of
+        Deferred f -> return $ Deferred $ \s -> do
+            t <- f s
+            Debug %%! duckf Yellow "(deferred) " Blue e " :: " Green t Reset
+            return t
+        Calculated t -> do
+            Debug %%! duckf Blue e " :: " Green t Reset
+            return typ
 
 
 checkCallExpression :: InternalState e -> Expr e -> [Argument e] -> e -> DuckTest e PyType

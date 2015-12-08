@@ -8,7 +8,7 @@ import DuckTest.Types
 initState :: InternalState e
 initState =
     addVariableType "hasattr" (Functional [("", Any), ("", strType)] Any) $
-    addVariableType "print" (Functional [("", Any)] Any) $
+    addVariableType "print" (Functional [("", Any)] Void) $
     addVariableType "len" (Functional [("", fromList Nothing $ map (,Any) ["__len__"])] Any) $
     addVariableType "str" (Functional [("", fromList Nothing $ map (,Any) ["__str__"])] strType) $
     addVariableType "int" (Functional [("", Any)] intType) $

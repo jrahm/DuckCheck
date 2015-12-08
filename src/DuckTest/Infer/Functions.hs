@@ -47,7 +47,11 @@ inferTypeForFunction state (Fun (Ident name _) params _ body _) =
 
         flip Functional returnType <$>
                 (zip parameterIdentifiers <$>
-                 mapM (flip (inferTypeForVariable newstate) body) parameterIdentifiers)
+                 mapM (toAny <.< flip (inferTypeForVariable newstate) body) parameterIdentifiers)
+
+    where {- We don't want arguments to be void -}
+          toAny Void = Any
+          toAny t = t
 
 
 inferTypeForFunction _ _ =
