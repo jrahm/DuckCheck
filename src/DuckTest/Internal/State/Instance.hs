@@ -25,10 +25,10 @@ handleImport :: InternalState SrcSpan -> (String, [String]) -> Maybe String -> S
  - on the DuckTest monad to pull in the correct module into its
  - state. We then check the module and lift it into its own object-}
 handleImport state (h, t) as pos =  do
-    modType <- ignore $ makeImport pos (h:t) parsePython $ \stmts ->
+    modType <- makeImport pos (h:t) parsePython $ \stmts ->
         stateToType =<< runChecker initState stmts
 
-    maybe' modType (return state) $ \a -> do
+    maybe' modType (Warn %%! duckf "Error with import " h >> return state) $ \a -> do
         Debug %%! duckf "Module " h " :: " a
 
         case as of

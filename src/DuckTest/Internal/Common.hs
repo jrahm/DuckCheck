@@ -14,6 +14,7 @@ import Data.List as X
 import Data.Maybe as X
 
 import Text.Printf as X
+import Data.String.Utils as X hiding (join)
 
 mconcatMap :: (Monoid m) => (a -> m) -> [a] -> m
 mconcatMap fn = mconcat . map fn

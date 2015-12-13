@@ -20,6 +20,7 @@ module DuckTest.Monad (DuckTest, DuckTestState, runDuckTest, hlog, isVersion2, h
                    readDuckRef, writeDuckRef, newDuckRef
                    ) where
 
+import System.Environment
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Either
@@ -85,9 +86,18 @@ findImport :: [String] -> DuckTest e (Maybe FilePath)
     string list is a dotted identifier list. -}
 findImport dotted = do
     let relativePath = intercalate "/" dotted
-    let sitepath = ["", "/usr/lib/python3.5"]
 
-    let possible = map ((++".py") . (</>relativePath)) sitepath
+    v2 <- isVersion2
+    let filterFn = if v2 then startswith "python2" else (\x -> startswith "python" x && not (startswith "python2" x))
+
+    systemPaths <- hissLiftIO (map ("/usr/lib"</>) <$> (filter filterFn <$> getDirectoryContents "/usr/lib"))
+    userPaths <- split ":" <$> hissLiftIO (getEnv "PYTHONPATH")
+    let allPaths' = (systemPaths ++ userPaths)
+    let allPaths = allPaths' ++ map (</>"site-packages") systemPaths
+
+    Trace %% "Looking in all paths: " ++ intercalate "\n" allPaths
+
+    let possible = map ((++".py") . (</>relativePath)) allPaths
 
     getFirst possible $ \path -> do
        Trace %% "Try import file: " ++ path
@@ -141,7 +151,7 @@ hlog str = lift $ lift $ putStrLn str
             lls <- mkLL ll
             hlog $ printf "%s - %s" lls line
 
-    where mkLL ll = do
+    where mkLL _ = do
             term <- runningInTerminal
             if term then
                 return (mkLLColor ll)
@@ -193,6 +203,7 @@ makeImport importPosition dottedlist parser checker = do
             return (Just typ)
         Nothing -> do
             importFile <- findImport dottedlist
+            Debug %% "Import file: " ++ show importFile
             maybe' importFile (emitWarning ("Unable to resolve import " ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
                 (>>=) (parser filePath) $ mapM $
                     \(Module stmts', _) -> do
@@ -201,7 +212,7 @@ makeImport importPosition dottedlist parser checker = do
                         lift $ modify $ \st ->
                             st {imports = Map.insert dottedlist Any (imports st)}
 
-                        modType <- checker stmts
+                        modType <- ignore $ checker stmts
 
                         lift $ modify $ \st ->
                             st {imports = Map.insert dottedlist modType (imports st)}
