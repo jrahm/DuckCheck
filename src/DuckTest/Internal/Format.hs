@@ -87,6 +87,7 @@ instance (DuckShowable PyType) where
     -- duckShow logl t | isAlpha t = ("alpha "++) <$> duckShow logl (unwrapAlpha t)
     duckShow logl t = return $ duckShow' logl t
       where
+        duckShow' _  (Alpha (Scalar (Just name) _)) = "alpha " ++ name
         duckShow' ll (Scalar (Just name) _) | ll > Trace = name
         duckShow' ll (Scalar Nothing s) | ll > Trace = "{ " ++ intercalate ", " (Map.keys s) ++ " }"
         duckShow' ll (Functional args ret) | ll > Trace = "(" ++ intercalate ", " (map (\(a, b) -> a ++ " :: " ++ duckShow' ll b) args) ++ ") -> " ++ duckShow' ll ret

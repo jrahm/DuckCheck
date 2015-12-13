@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE BangPatterns #-}
 module DuckTest.Internal.State where
 
 import DuckTest.Internal.Common
@@ -93,11 +94,25 @@ addVariableType str typ (InternalState m1 r b) = InternalState (Map.insert str (
 addAll :: [(String, PyType)] -> InternalState e -> InternalState e
 addAll lst init' = foldl (\st (str, typ) -> addVariableType str typ st) init' lst
 
-addVariableTypeDeferred :: String -> Deferred e PyType -> InternalState e -> InternalState e
-addVariableTypeDeferred str typ (InternalState m1 r b) = InternalState (Map.insert str typ m1) r b
+addVariableTypeDeferred :: String -> Deferred e PyType -> InternalState e -> DuckTest e (InternalState e)
+addVariableTypeDeferred str typ (InternalState m1 r b) = do
+    typ' <- realType typ
+    return $ InternalState (Map.insert str typ' m1) r b
 
-addAllDeferred :: [(String, Deferred e PyType)] -> InternalState e -> InternalState e
-addAllDeferred lst init' = foldl (\st (str, typ) -> addVariableTypeDeferred str typ st) init' lst
+    where realType (Deferred fn) = do
+            duckRef <- newDuckRef Nothing
+            return $ Deferred $ \st' -> do
+                cache <- readDuckRef duckRef
+                case cache of
+                    Nothing -> do
+                        t <- fn st'
+                        writeDuckRef (Just t) duckRef
+                        return t
+                    Just t -> return t
+          realType t = return $ t
+
+addAllDeferred :: [(String, Deferred e PyType)] -> InternalState e -> DuckTest e (InternalState e)
+addAllDeferred lst init' = foldM (\st (str, typ) -> addVariableTypeDeferred str typ st) init' lst
 
 hasVariable :: String -> InternalState e -> Bool
 hasVariable vid = isJust . flip getVariableType vid

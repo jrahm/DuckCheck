@@ -16,7 +16,8 @@ module DuckTest.Monad (DuckTest, DuckTestState, runDuckTest, hlog, isVersion2, h
                    die, fromEither, runDuckTestIO, dtReadFile,
                    emitWarning, getWarnings, ignore, warn, findImport, makeImport,
                    LogLevel(..), (%%), getLogLevel,
-                   (%%!), runningInTerminal
+                   (%%!), runningInTerminal, DuckRef,
+                   readDuckRef, writeDuckRef, newDuckRef
                    ) where
 
 import Control.Monad.IO.Class
@@ -34,8 +35,8 @@ import System.FilePath
 import System.IO
 import System.Posix.Terminal
 import System.Posix.Types
-
 import qualified Data.Map as Map
+import Data.IORef
 
 data DuckTestState e = DuckTestState {
       flags :: Set Flag    -- command line flags
@@ -50,6 +51,17 @@ data DuckTestState e = DuckTestState {
     {- List of imported modules. -}
     , imports  :: Map [String] PyType
 }
+
+newtype DuckRef a = DuckRef (IORef a)
+
+readDuckRef :: DuckRef a -> DuckTest e a
+readDuckRef (DuckRef io) = hissLiftIO $ readIORef io
+
+writeDuckRef :: a -> DuckRef a -> DuckTest e ()
+writeDuckRef val (DuckRef io) = hissLiftIO $ writeIORef io val
+
+newDuckRef :: a -> DuckTest e (DuckRef a)
+newDuckRef v = hissLiftIO $ DuckRef <$> newIORef v
 
 type DuckTest e = EitherT String (StateT (DuckTestState e) IO)
 
