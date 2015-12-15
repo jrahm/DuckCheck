@@ -6,6 +6,8 @@ module DuckTest.Internal.State where
 import DuckTest.Internal.Common
 import DuckTest.Types
 import DuckTest.Monad
+import qualified Data.ByteString as BS
+import Data.Serialize
 
 import qualified Data.Map as Map
 

@@ -17,9 +17,11 @@ module DuckTest.Monad (DuckTest, DuckTestState, runDuckTest, hlog, isVersion2, h
                    emitWarning, getWarnings, ignore, warn, findImport, makeImport,
                    LogLevel(..), (%%), getLogLevel,
                    (%%!), runningInTerminal, DuckRef,
-                   readDuckRef, writeDuckRef, newDuckRef
+                   readDuckRef, writeDuckRef, newDuckRef, dtWriteFile,
+                   dtReadFileBS
                    ) where
 
+import Data.Serialize hiding (get)
 import System.Environment
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
@@ -38,6 +40,7 @@ import System.Posix.Terminal
 import System.Posix.Types
 import qualified Data.Map as Map
 import Data.IORef
+import qualified Data.ByteString as BS
 
 data DuckTestState e = DuckTestState {
       flags :: Set Flag    -- command line flags
@@ -65,6 +68,14 @@ newDuckRef :: a -> DuckTest e (DuckRef a)
 newDuckRef v = hissLiftIO $ DuckRef <$> newIORef v
 
 type DuckTest e = EitherT String (StateT (DuckTestState e) IO)
+
+dtWriteFile :: FilePath -> BS.ByteString -> DuckTest e ()
+dtWriteFile fp bs = hissLiftIO $ BS.writeFile fp bs
+
+dtReadFileBS :: FilePath -> DuckTest e BS.ByteString
+{-| Read a file under the DuckTest monad. -}
+dtReadFileBS = hissLiftIO . BS.readFile
+
 
 dtReadFile :: FilePath -> DuckTest e String
 {-| Read a file under the DuckTest monad. -}
@@ -190,35 +201,59 @@ ignore fn = do
     before <- lift (warnings <$> get)
     fn <* lift (modify (\s -> s {warnings = before}))
 
+loadFromFileCache :: [String] -> DuckTest e (Maybe PyType)
+loadFromFileCache dotlist =
+    let filepath = toFilePath dotlist in do
+    b <- hissLiftIO $ doesFileExist filepath
+    if not b then
+        return Nothing
+        else
+            loadType filepath
+
+toFilePath :: [String] -> String
+toFilePath = intercalate "."
+
+loadFromMemoryCache :: [String] -> DuckTest e (Maybe PyType)
+loadFromMemoryCache dotlist = Map.lookup dotlist <$> (imports <$> lift get)
+
 makeImport :: SrcSpan ->
               [String] ->
               (FilePath  -> DuckTest SrcSpan (Maybe (ModuleSpan, [Token]))) ->
               ([Statement SrcSpan] -> DuckTest SrcSpan PyType) -> DuckTest SrcSpan (Maybe PyType)
 makeImport importPosition dottedlist parser checker = do
     Debug %% printf "Make import %s" (show dottedlist)
-    maybePyType <- Map.lookup dottedlist <$> (imports <$> lift get)
-    case maybePyType of
-        Just typ -> do
-            Debug %% printf "Use cached"
-            return (Just typ)
-        Nothing -> do
-            importFile <- findImport dottedlist
-            Debug %% "Import file: " ++ show importFile
-            maybe' importFile (emitWarning ("Unable to resolve import " ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
-                (>>=) (parser filePath) $ mapM $
-                    \(Module stmts', _) -> do
-                        let stmts = preprocess stmts'
+    (loadFromFileCache dottedlist <||>
+     loadFromMemoryCache dottedlist) <||> do
+        importFile <- findImport dottedlist
+        Debug %% "Import file: " ++ show importFile
+        maybe' importFile (emitWarning ("Unable to resolve import " ++ intercalate "." dottedlist) importPosition >> return Nothing) $ \filePath ->
+            (>>=) (parser filePath) $ mapM $
+                \(Module stmts', _) -> do
+                    let stmts = preprocess stmts'
 
-                        lift $ modify $ \st ->
-                            st {imports = Map.insert dottedlist Any (imports st)}
+                    lift $ modify $ \st ->
+                        st {imports = Map.insert dottedlist Any (imports st)}
 
-                        modType <- ignore $ checker stmts
+                    modType <- ignore $ checker stmts
+                    saveType (toFilePath dottedlist) modType
 
-                        lift $ modify $ \st ->
-                            st {imports = Map.insert dottedlist modType (imports st)}
+                    lift $ modify $ \st ->
+                        st {imports = Map.insert dottedlist modType (imports st)}
 
-                        return modType
+                    return modType
 infixl 1 %%
 
 runningInTerminal :: DuckTest e Bool
 runningInTerminal = lift $ inTerminal <$> get
+
+saveType :: FilePath -> PyType -> DuckTest e ()
+saveType fp st = do
+    let serialize = encode st
+    dtWriteFile fp serialize
+
+loadType :: FilePath -> DuckTest e (Maybe PyType)
+loadType fp = do
+    bs <- dtReadFileBS fp
+    case decode bs of
+        Right t -> return (Just t)
+        Left err -> Warn %% "Error decoding: " ++ err >> return Nothing

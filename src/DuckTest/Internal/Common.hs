@@ -44,3 +44,10 @@ when' cond fn = cond >>= flip when fn
 
 foldM' :: (Monad m) => a -> [b] -> (a -> b -> m a) -> m a
 foldM' a b c = foldM c a b
+
+(<||>) :: (Monad m) => m (Maybe a) -> m (Maybe a) -> m (Maybe a)
+(<||>) mm1 mm2 = do
+    m1 <- mm1
+    case m1 of
+        Nothing -> mm2
+        _ -> return m1

@@ -1,7 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE BangPatterns #-}
 
 module DuckTest.Types
     (union, intersection, difference, prettyType, prettyType',
@@ -16,6 +15,9 @@ import DuckTest.Internal.Common hiding (union, (<>))
 import qualified Data.Map as Map
 
 import Control.Monad.Writer.Lazy hiding (Any, (<>))
+import Data.Serialize
+import Data.Int
+import Control.Arrow
 
 {-
  - This is a data type representing an inferred type in Python. THere
@@ -43,6 +45,30 @@ data PyType =   Scalar (Maybe String) (Map String PyType)
               | Any
               | Alpha PyType
               | Void deriving(Eq)
+
+instance Serialize PyType where
+    put t = case t of
+        (Alpha t') -> put' t'
+        _ -> put' t
+        where
+        put' (Scalar str mp) = put (0::Int8) *> put str *> put mp
+        put' (Functional args ret) = put (1::Int8) *> put args *> put ret
+        put' Any = put (2::Int8)
+        put' Void = put (3::Int8)
+        put' (Alpha _) = put (4::Int8)
+
+    get = do
+        typ' <- get
+        let typ = typ' :: Int8
+        case typ of
+            0 -> rewireAlphas <$> (Scalar <$> get <*> get)
+            1 -> rewireAlphas <$> (Functional <$> get <*> get)
+            2 -> return Any
+            3 -> return Void
+            4 -> return (Alpha Void)
+            _ -> fail "bad magic number"
+
+
 
 instance Show PyType where
     show (Scalar name strs) =
@@ -329,3 +355,16 @@ isVoid2 t = isVoid t
 unwrapAlpha :: PyType -> PyType
 unwrapAlpha (Alpha a) = unwrapAlpha a
 unwrapAlpha t = t
+
+rewireAlphas :: PyType -> PyType
+{-| finds all Alpha Any's in a type and changes
+ - them to Alpha t's. -}
+rewireAlphas typ = rewireAlphas' typ typ
+
+rewireAlphas' :: PyType -> PyType -> PyType
+rewireAlphas' top (Alpha Void) = mkAlpha (rewireAlphas' top top)
+rewireAlphas' top (Alpha t) = mkAlpha (rewireAlphas' top t)
+rewireAlphas' top (Functional args ret) = Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
+rewireAlphas' top (Scalar s m) = Scalar s (Map.map (rewireAlphas' top) m)
+rewireAlphas' _ Any = Any
+rewireAlphas' _ Void = Void
