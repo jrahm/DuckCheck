@@ -1,9 +1,14 @@
 
-Phase 3
+Plan
 -------
 
-Step 1 -- refine easy and inefficient version of total type checking.
-Step 2 -- design a model for tracking typing dependencies.
-Step 3 -- Begin implementing data structures
-Step 4 -- Flesh out the algorithms needed
-Step 5 -- Begin implementing
+Step 1 -- Undo previous attempts to solve the problem.
+
+Step 2 -- Redesign the type model for functions to depend on argument/closure types
+
+Step 3 -- Create an alorithm to generate a dependency graph of return types to argument typesbased
+          on function bodies
+
+Step 4 -- Implement an incremental approach to calculating the return type of function calls
+
+Step 5 -- Plug new algorithm into current interface
