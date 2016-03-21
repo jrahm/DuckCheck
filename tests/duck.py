@@ -32,4 +32,4 @@ def test_feathers(duck):
 my_duck = Duck()
 my_person = Person()
 test_feathers(my_duck)
-test_feathers(my_person)
+test_feathers(my_person) # Error
