@@ -5,15 +5,19 @@ import DuckTest.Internal.State
 import DuckTest.Types
 import Text.Printf
 
+import qualified Data.Map as Map
+import Control.Monad
+import Control.Monad.Trans.Either
+
 initState :: InternalState
 initState =
-    addVariableType "hasattr" (Functional [("", Any), ("", strType)] Any) $
-    addVariableType "print" (Functional [("", Any)] Any) $
-    addVariableType "len" (Functional [("", fromList Nothing $ map (,Any) ["__len__"])] Any) $
-    addVariableType "str" (Functional [("", fromList Nothing $ map (,Any) ["__str__"])] strType) $
-    addVariableType "int" (Functional [("", Any)] intType) $
-    addVariableType "set" (Functional [] setType) $
-    addVariableType "list" (Functional [] $ listType Any)
+    addVariableType "hasattr" (makeFunctional [Any, strType] Any) $
+    addVariableType "print" (makeFunctional [Any] Any) $
+    addVariableType "len" (makeFunctional [fromList Nothing $ map (,Any) ["__len__"]] Any) $
+    addVariableType "str" (makeFunctional [fromList Nothing $ map (,Any) ["__str__"]] strType) $
+    addVariableType "int" (makeFunctional [Any] intType) $
+    addVariableType "set" (makeFunctional [] setType) $
+    addVariableType "list" (makeFunctional [] $ listType Any)
     emptyState
 --
 -- builtinGlobalFunctions :: Map String Function
@@ -90,8 +94,8 @@ intAttrs =
          "bit_length", "conjugate", "denominator", "from_bytes",
          "imag", "numerator", "real", "to_bytes", "__div__"]
     `mappend`
-        [("__add__", Functional [("", mkAlpha intType)] (mkAlpha intType)),
-         ("__str__", Functional [] strType)]
+        [("__add__", makeFunctional [mkAlpha intType] (mkAlpha intType)),
+         ("__str__", makeFunctional [] strType)]
 
 stringAttrs :: [(String, PyType)]
 stringAttrs =
@@ -121,7 +125,7 @@ stringAttrs =
           "splitlines", "startswith", "strip", "swapcase",
           "title", "translate", "upper", "zfill"]
     `mappend`
-        [("__add__", Functional [("", mkAlpha strType)] (mkAlpha strType))]
+        [("__add__", makeFunctional [mkAlpha strType] (mkAlpha strType))]
 
 sysAttrs :: [(String, PyType)]
 sysAttrs =
@@ -166,10 +170,25 @@ listAttrs _T =
         "insert", "pop", "remove", "reverse",
         "sort"]
     `mappend`
-        [ ("__add__", Functional [("arg0", mkAlpha $ listType _T)] (mkAlpha $ listType _T))
-        , ("append", Functional [("arg0", _T)] Void)
-        , ("__iter__", Functional [] (basicIteratorType _T))
+        [ ("__add__", makeFunctional [mkAlpha $ listType _T] (mkAlpha $ listType _T))
+        , ("append", makeFunctional [_T] Void)
+        , ("__iter__", makeFunctional [] (basicIteratorType _T))
         ]
 
 basicIteratorType :: PyType -> PyType
-basicIteratorType _T = fromList Nothing [("__next__", Functional [] _T)]
+basicIteratorType _T = fromList Nothing [("__next__", makeFunctional [] _T)]
+
+makeFunctional :: [PyType] -> PyType -> PyType
+makeFunctional lst ret =
+    Functional $ \pos argMap -> do
+        forM_ (zip (map show [0..]) lst) $
+            \(name, ptyp) ->
+                case Map.lookup name argMap of
+                    Just (atyp, annot) ->
+                        case atyp `matchType` ptyp of
+                            Nothing -> return ()
+                            Just x -> left (x, annot)
+                    Nothing ->
+                        left (MissingArgument name, pos)
+
+        return ret

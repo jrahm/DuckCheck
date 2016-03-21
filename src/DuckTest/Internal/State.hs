@@ -4,6 +4,7 @@ import DuckTest.Internal.Common
 import DuckTest.Types
 
 import qualified Data.Map as Map
+import Control.Monad.Trans.Either
 
 {- An internal checker state with a map of variables to their types
  - and a possible return type. -}
@@ -25,10 +26,11 @@ intersectStates :: InternalState -> InternalState -> InternalState
 intersectStates (InternalState m1 r1 b1) (InternalState m2 r2 b2) =
     InternalState (Map.intersectionWith (><) m1 m2) (r1 >< r2) (b1 && b2)
 
-getFunctionType :: InternalState -> String -> Maybe ([PyType], PyType)
+getFunctionType :: Pretty a => InternalState
+                   -> String -> Maybe (a -> Map String (PyType, a) -> EitherT (TypeError, a) IO PyType)
 getFunctionType st id' =
     (>>=) (getVariableType st id') $ \t -> case t of
-        (Functional a b) -> return (map snd a, b)
+        (Functional fn) -> return fn
         _ -> Nothing
 
 getVariableType :: InternalState -> String -> Maybe PyType
@@ -45,10 +47,6 @@ hasVariable vid = isJust . flip getVariableType vid
 
 emptyState :: InternalState
 emptyState = mempty
-
-stateUnderFunction :: PyType -> InternalState -> InternalState
-stateUnderFunction (Functional args _) = addAll args
-stateUnderFunction _ = id
 
 setReturnType :: PyType -> InternalState -> InternalState
 setReturnType t (InternalState m _ _) = InternalState m t True

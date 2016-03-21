@@ -63,6 +63,8 @@ warnTypeError pos (Difference t1 t2 dif) =
                 forM (Map.toList dif) $ \(key, typ) ->
                     duckf key " :: " typ :: DuckTest e String
         duckf "'" Green (unwrapAlpha t2) Reset "' incompatible as '" Green (unwrapAlpha t1) Reset "'. Missing attributes needed: '" Green (intercalate ", " attrsNeeded) Reset "'"
+warnTypeError pos (MissingArgument which) =
+    warn pos $ duckf "Missing argument " which
 
 data Ansi = Green | Red | Yellow | Blue | Reset | Bold
 

@@ -1,14 +1,14 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE Rank2Types #-}
 
 module DuckTest.Types
     (union, intersection, difference, prettyType, prettyType',
      getCallType, PyType(..), (><), (<>), fromList, mkAlpha,
      TypeError(..), getAttribute, matchType, UnionType(..),
      IntersectionType(..), unwrap, singleton, liftFromDotList, isVoid, isVoid2,
-     instanceTypeFromStatic, setAttribute, setTypeName, unwrapAlpha, isAlpha)
+     setAttribute, setTypeName, unwrapAlpha, isAlpha)
     where
 
 import DuckTest.Internal.Common hiding (union, (<>))
@@ -16,6 +16,7 @@ import DuckTest.Internal.Common hiding (union, (<>))
 import qualified Data.Map as Map
 
 import Control.Monad.Writer.Lazy hiding (Any, (<>))
+import Control.Monad.Trans.Either
 
 {-
  - This is a data type representing an inferred type in Python. THere
@@ -39,10 +40,18 @@ import Control.Monad.Writer.Lazy hiding (Any, (<>))
  -}
 
 data PyType =   Scalar (Maybe String) (Map String PyType)
-              | Functional [(String, PyType)] PyType
+                -- A functional type now is a type that takes a map of
+                -- arguments (in the form of a map from string to types [with annotations])
+                -- and returns either an error, or a legitimate return type.
+                --
+                -- The arguments to a function are refernced in the map either by
+                -- their index into the argument array (starting from 0), or as their
+                -- name in the case of keyword arguments.
+              | Functional (forall a. Pretty a => a -> Map String (PyType, a) -> EitherT (TypeError, a) IO PyType)
+              -- | Functional [(String, PyType)] PyType
               | Any
               | Alpha PyType
-              | Void deriving(Eq)
+              | Void
 
 instance Show PyType where
     show (Scalar name strs) =
@@ -50,7 +59,7 @@ instance Show PyType where
             [] -> "Void"
             l ->
                 fromMaybe "" name ++ "{" ++ intercalate ", " (map (\(str, typ) -> str ++ " :: " ++ show typ) l) ++ "}"
-    show (Functional args ret) = "(" ++ intercalate "," (map show args) ++ ") -> " ++ show ret
+    show (Functional _) = "Functional"
     show Any = "Any"
     show (Alpha _) = "alpha"
     show Void = "Void"
@@ -90,9 +99,10 @@ union t1_ t2_ = union' t1_ t2_
                            | otherwise = Just $ printf "(%s)&(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
 
     union' sc@Scalar {} f@Functional {} = sc `union'` singleton "__call__" f
-    union' (Functional args1 ret1) (Functional args2 ret2) =
-        Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `intersection` t2)) args1 args2)
-                   (ret1 `union'` ret2)
+    union' (Functional fn1) (Functional fn2) =
+        Functional $ \a mp ->
+            liftM2 union' (fn1 a mp) (fn2 a mp)
+
     union' f@Functional {} t = t `union'` f
 
 intersection :: PyType -> PyType -> PyType
@@ -122,9 +132,9 @@ intersection a b = intersection' a b
             interStr s1' s2' | s1' == s2' = s1'
                              | otherwise = Just $ printf "(%s)|(%s)" (fromMaybe "?" s1) (fromMaybe "?" s2)
     intersection' sc@Scalar {} f@Functional {} = intersection sc (singleton "__call__" f)
-    intersection' (Functional args1 ret1) (Functional args2 ret2) =
-        Functional (zipWith (\(s1, t1) (_, t2) -> (s1, t1 `union` t2)) args1 args2)
-                   (intersection ret1 ret2)
+    intersection' (Functional fn1) (Functional fn2) =
+        Functional $ \a mp ->
+            liftM2 intersection' (fn1 a mp) (fn2 a mp)
     intersection' f@Functional {} t = intersection t f
 
     -- difference x y = trace (prettyType x ++ " - " ++ prettyType y) $ difference' x y
@@ -157,10 +167,9 @@ difference a b = difference' a b
             fn t1 t2 = if isVoid (difference' t1 t2) then
                         Nothing else Just (difference' t1 t2)
     difference'' sc@Scalar {} f@Functional {} = difference' sc (singleton "__call__" f)
-    difference'' (Functional args1 ret1) (Functional args2 ret2) =
-        let almost = Functional (zipWith (\(s1, t1) (_, t2) -> (s1, difference' t1 t2)) args1 args2)
-                        (difference' ret1 ret2)
-                        in if isVoidFunction almost then Void else almost
+    difference'' (Functional fn1) (Functional fn2) =
+        Functional $ \a mp ->
+            liftM2 difference'' (fn1 a mp) (fn2 a mp)
     difference'' f@Functional {} t = difference' t f
 
 isVoid :: PyType -> Bool
@@ -186,6 +195,7 @@ isCompatibleAs :: PyType -> PyType -> PyType
     Any type -}
 isCompatibleAs Any _ = Void
 isCompatibleAs _ Any = Void
+isCompatibleAs Functional {} Functional {} = Void
 isCompatibleAs smaller larger = difference smaller larger
 
 getAttribute :: String -> PyType -> Maybe PyType
@@ -268,16 +278,7 @@ prettyType'' descend typ = execWriter $ prettyType_ 0 typ
                         prettyType_ (indent + length forattrplus) foratttyp
                 tell "} "
 
-          prettyType_ indent (Functional args ret) = do
-             tell "( "
-             unless (null args) $ do
-                 let ((_, h):t) = args
-                 prettyType_ (indent + 2) h
-                 forM_ t $ \(_, fortyp) -> do
-                     tell "\n, "
-                     prettyType_ (indent + 2) fortyp
-             tell ") -> "
-             prettyType_ (indent + 1) ret
+          prettyType_ _ (Functional {}) = tell "Functional"
 
           prettyType_ _ Any = tell "Any"
           prettyType_ _ (Alpha _) = tell "alpha"
@@ -287,11 +288,9 @@ prettyType'' descend typ = execWriter $ prettyType_ 0 typ
           tab :: Int -> Writer String ()
           tab indent = forM_ [1..indent] $ const $ tell " "
 
-data TypeError = Incompatible PyType PyType | Difference PyType PyType (Map String PyType)
-
-isVoidFunction :: PyType -> Bool
-isVoidFunction (Functional args ret) = all (isVoid . snd) (("",ret):args)
-isVoidFunction _ = False
+data TypeError = Incompatible PyType PyType |
+                 Difference PyType PyType (Map String PyType) |
+                 MissingArgument String
 
 {- No news is good news. Check to see if t1 is smaller than t2 -}
 matchType :: PyType -> PyType -> Maybe TypeError
@@ -311,14 +310,6 @@ getCallType _ = Nothing
 setTypeName :: String -> PyType -> PyType
 setTypeName name (Scalar _ x) = Scalar (Just name) x
 setTypeName _ t = t
-
-instanceTypeFromStatic :: PyType -> Maybe PyType
-instanceTypeFromStatic (Functional _ r) = Just r
-instanceTypeFromStatic (Scalar _ m) =
-    case Map.lookup "__call__" m of
-        Just (Functional _ ret) -> Just ret
-        _ -> Nothing
-instanceTypeFromStatic _ = Nothing
 
 isVoid2 :: PyType -> Bool
 isVoid2 (Alpha Void) = True
