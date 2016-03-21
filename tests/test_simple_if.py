@@ -20,7 +20,7 @@ def another_test(arg):
 
 def crap():
     string_var = "Literal String"
-    another_test(string_var)
+    another_test(string_var) # Error
 
 var = "more stuff"
-another_test(var)
+another_test(var) # Error

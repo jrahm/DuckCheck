@@ -12,4 +12,4 @@ class TestClass:
                 z.test_z_attribute()
 
             st = "This is a string"
-            inner_function_2(st)
+            inner_function_2(st) # Error

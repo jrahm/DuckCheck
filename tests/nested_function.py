@@ -16,9 +16,9 @@ def outer_function(x):
 
     test2 = "str"
 
-    inner_function(test2)
+    inner_function(test2) # Error
 
 st = "Hello"
 outer_function(st)
 
-inner_function(st)
+inner_function(st) # Error

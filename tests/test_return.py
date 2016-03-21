@@ -26,4 +26,4 @@ def is_eq(x, y):
 
 x = my_function2()
 is_eq(x, "test")
-sys.argv.append(x)
+sys.argv.append(x) # Error
