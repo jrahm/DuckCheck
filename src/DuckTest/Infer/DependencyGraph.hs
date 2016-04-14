@@ -28,7 +28,8 @@ data DependencyNode a =
 data DependencyGraph a =
         DependencyGraph {
             internalGraph :: Gr (DependencyNode a) (),
-            sinkNodes :: [Node]
+            sinkNodes :: [Node],
+            internalVariables :: Map String Node
         }
 
 buildDependencyGraph ::
@@ -44,9 +45,10 @@ buildDependencyGraph stmts =
         sinks = mapMaybe (\(_, n, (str, _), _) -> case str of
                             "$return$" -> Just n
                             _ -> Nothing) contexts
+        variables = fmap (\(_, n, _, _) -> n) mp
         in do
         internal <- (undir . buildGr) <$> mapM makeDependencyNode contexts
-        return (DependencyGraph internal sinks)
+        return (DependencyGraph internal sinks variables)
 
 
     where

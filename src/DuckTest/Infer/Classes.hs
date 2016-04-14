@@ -56,24 +56,24 @@ findSelfAssignments state statements =
 {- From a PyType, get the init function from it. If we cannot get the
  - init function from it, we simply create an itit function type. -}
 initType :: PyType -> PyType
-initType f@(Scalar _ m) =
-    let initFn = Map.findWithDefault (Functional [] f) "__init__" m in
-    case initFn of
-        (Functional args _) -> Functional args f
-        _ -> Functional [] f
-initType f = Functional [] f
+initType f@(Scalar _ m) = undefined
+    -- let initFn = Map.findWithDefault (Functional [] f) "__init__" m in
+    -- case initFn of
+    --     (Functional args _) -> Functional args f
+    --     _ -> Functional [] f
+initType f = undefined -- Functional [] f
 
 {- Given a instance type of a class, check to make sure
  - it is consistent with the types expected for `self`
  - in all other functions. -}
 matchBoundWithStatic :: e -> PyType -> PyType -> DuckTest e ()
-matchBoundWithStatic pos bound (Scalar _ m) =
-    forM_ (map snd $ Map.toList m) $ \typ ->
-        case typ of
-            (Functional ((_, self):_) _) ->
-                whenJust (matchType self bound)
-                    (warnTypeError pos)
-            _ -> return ()
+matchBoundWithStatic pos bound (Scalar _ m) = undefined
+    -- forM_ (map snd $ Map.toList m) $ \typ ->
+    --     case typ of
+    --         (Functional ((_, self):_) _) ->
+    --             whenJust (matchType self bound)
+    --                 (warnTypeError pos)
+    --         _ -> return ()
 matchBoundWithStatic _ _ _ = undefined
 
 {- Given self assignments (found from the above function) and the
@@ -86,7 +86,8 @@ toBoundType name (Scalar _ m2) selfAssign =
     let boundFns = Scalar (Just name) $
                     flip Map.mapMaybe m2 $
                         \typ -> case typ of
-                                 (Functional (_:as) r) -> Just (Functional as r)
+                                 -- TODO  FIX THIS!!!!
+                                 -- (Functional (_:as) r) -> Just (Functional as r)
                                  _ -> Nothing
         in
     setTypeName name $ selfAssign `union` boundFns
@@ -100,7 +101,7 @@ rewireAlphas typ = rewireAlphas' typ typ
 rewireAlphas' :: PyType -> PyType -> PyType
 rewireAlphas' top (Alpha Void) = mkAlpha (rewireAlphas' top top)
 rewireAlphas' top (Alpha t) = mkAlpha (rewireAlphas' top t)
-rewireAlphas' top (Functional args ret) = Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
+rewireAlphas' top (Functional {} {-args ret-}) = undefined -- Functional (map (second $ rewireAlphas' top) args) (rewireAlphas' top ret)
 rewireAlphas' top (Scalar s m) = Scalar s (Map.map (rewireAlphas' top) m)
 rewireAlphas' _ Any = Any
 rewireAlphas' _ Void = Void

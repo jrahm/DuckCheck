@@ -56,11 +56,12 @@ handleFunction state fun@Fun {fun_name = (Ident name _), fun_body=body} = do
     functionType <- inferTypeForFunction state fun
     let newstate = addVariableType name functionType state
     case functionType of
-       (Functional args _) -> do
-          ret <- getReturnType <$> runChecker (addAll args newstate) body
-          let newfntype = Functional args ret
-          Info %%! duckf "\n(Inferred) " name " :: " newfntype "\n"
-          return $ addVariableType name newfntype state
+       (Functional {}) ->
+          error "undefined handle functional"
+          -- ret <- getReturnType <$> runChecker (addAll args newstate) body
+          -- let newfntype = Functional args ret
+          -- Info %%! duckf "\n(Inferred) " name " :: " newfntype "\n"
+          -- return $ addVariableType name newfntype state
        _ -> do
            Warn %% "This should not happen, infer type of function returned a type that isn't a function."
            return state
@@ -109,7 +110,7 @@ handleClass state name body pos = do
                  return $ addVariableType vname inferredType curstate
             _ -> return curstate
 
-    let staticVarType = stateToType staticVarsState `union` Functional [] (Alpha Void)
+    let staticVarType = stateToType staticVarsState `union` Functional (\_ _ -> return (Alpha Void))
     let newstate = addVariableType name staticVarType state
     staticClassState <- runChecker newstate $ mapMaybe (\stmt ->
                           case stmt of
@@ -160,9 +161,9 @@ handleConditional state guards elsebody = do
                                                   (Ident "__class__" _) _)
                                                   (Ident "__eq__" _) _)
                                                   [ArgExpr (Var (Ident clazz _) _) _] _)
-                                                ->
-                                                    let instanceType = instanceTypeFromStatic =<< getVariableType state clazz in
-                                                        maybe state (\t -> modifyVariableType var (const t) state) instanceType
+                                                -> error $ "undefined in handleConditional"
+                                                   --  let instanceType = instanceTypeFromStatic =<< getVariableType state clazz in
+                                                   --      maybe state (\t -> modifyVariableType var (const t) state) instanceType
                                             _ -> state
                   _ <- inferTypeForExpression state expr
                   runChecker modifiedState stmts
