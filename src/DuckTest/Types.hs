@@ -47,7 +47,7 @@ data PyType =   Scalar (Maybe String) (Map String PyType)
                 -- The arguments to a function are refernced in the map either by
                 -- their index into the argument array (starting from 0), or as their
                 -- name in the case of keyword arguments.
-              | Functional (forall a. Pretty a => a -> Map String (PyType, a) -> EitherT (TypeError, a) IO PyType)
+              | Functional (forall a. a -> Map String (PyType, a) -> EitherT (TypeError, a) IO PyType)
               -- | Functional [(String, PyType)] PyType
               | Any
               | Alpha PyType

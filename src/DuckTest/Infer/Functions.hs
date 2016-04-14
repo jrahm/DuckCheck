@@ -31,27 +31,7 @@ import DuckTest.Infer.Expression
  - of the type [args] -> return type. All the types are in a
  - structural format -}
 inferTypeForFunction :: InternalState -> Statement a -> DuckTest a PyType
-inferTypeForFunction state (Fun (Ident name _) params _ body _) =
-
-    {- Get a list of the names of the parameters to the function. For
-     - each of those parameters, try to infer the type of each.
-     -
-     - Return type is not yet able to be inferred. This is a TODO -}
-    let parameterIdentifiers :: [String]
-        parameterIdentifiers = map (tryGetIdentifier "") params
-
-        returnType = Any -- cannot yet infer return type
-
-        newstate = addVariableType name (Functional (map (const ("",Any)) params) Any) state
-        in
-
-        flip Functional returnType <$>
-                (zip parameterIdentifiers <$>
-                 mapM (toAny <.< flip (inferTypeForVariable newstate) body) parameterIdentifiers)
-
-    where {- We don't want arguments to be void -}
-          toAny Void = Any
-          toAny t = t
+inferTypeForFunction state (Fun (Ident name _) params _ body _) = undefined
 
 
 inferTypeForFunction _ _ =

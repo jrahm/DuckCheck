@@ -7,6 +7,9 @@ import DuckTest.Monad
 import DuckTest.MonadHelper
 import DuckTest.Internal.Format
 
+import Control.Monad.Trans.Either
+import Control.Monad.IO.Class
+
 inferTypeForExpressionNoStrip :: InternalState -> Expr e -> DuckTest e PyType
 inferTypeForExpressionNoStrip state expr =
     case expr of
@@ -18,11 +21,15 @@ inferTypeForExpressionNoStrip state expr =
 
       (Call callexpr args pos) -> do
           Debug %%! duckf Yellow "Infer call expression: " Blue expr Reset
-          exprType <- checkCallExpression state callexpr args pos
+          exprType <- inferTypeForExpression state callexpr
           case getCallType exprType of
-              Just (Functional _ ret) -> do
-                Info %%! duckf "The type of " callexpr " returns type " ret
-                return ret
+              Just (Functional fn) -> do
+                -- Info %%! duckf "The type of " callexpr " returns type " ret
+                argTypes <- buildArgumentMap args
+                retType <- liftIO (runEitherT $ fn pos argTypes)
+                case retType of
+                    Left (err, errpos) -> warnTypeError errpos err >> return Any
+                    Right x -> return x
               _ -> return Any
 
       (Dot subexpr (Ident att _) pos) -> do
@@ -38,31 +45,14 @@ inferTypeForExpressionNoStrip state expr =
       (Paren subexpr _) -> inferTypeForExpression state subexpr
       (None _) -> return Any
       _ -> return Any
+  where
+    buildArgumentMap :: [Argument e] -> DuckTest e (Map String (PyType, e))
+    buildArgumentMap = undefined
 
 inferTypeForExpression :: InternalState -> Expr e -> DuckTest e PyType
 inferTypeForExpression state expr = do
     Trace %%! duckf "TEST => " expr
     inferTypeForExpressionNoStrip state expr
-
-
-checkCallExpression :: InternalState -> Expr e -> [Argument e] -> e -> DuckTest e PyType
-checkCallExpression st lhs args pos = do
-    lhsType <- inferTypeForExpression st lhs
-    case lhsType of
-        Any -> return () -- maybe adda paranoid warning here
-        _ -> case getAttribute "__call__" lhsType of
-                Nothing -> warn pos $ duckf "The expression " lhs " does not appear to be callable"
-                Just (Functional argTypes _) ->
-                    zipWithM_ (tryMatchExprType st pos) (map snd argTypes) args
-                Just t ->
-                    warn pos $ duckf "The type for __call__ is not a function! Got " t
-    return lhsType
-
-    where
-        tryMatchExprType state position paramType argExpr = do
-            argType <- inferArgType state argExpr
-            whenJust (matchType paramType argType)
-                (warnTypeError position)
 
 inferArgType :: InternalState -> Argument e -> DuckTest e PyType
 inferArgType st (ArgExpr expr _) = inferTypeForExpression st expr

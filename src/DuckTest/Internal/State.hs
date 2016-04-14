@@ -26,7 +26,7 @@ intersectStates :: InternalState -> InternalState -> InternalState
 intersectStates (InternalState m1 r1 b1) (InternalState m2 r2 b2) =
     InternalState (Map.intersectionWith (><) m1 m2) (r1 >< r2) (b1 && b2)
 
-getFunctionType :: Pretty a => InternalState
+getFunctionType :: InternalState
                    -> String -> Maybe (a -> Map String (PyType, a) -> EitherT (TypeError, a) IO PyType)
 getFunctionType st id' =
     (>>=) (getVariableType st id') $ \t -> case t of
